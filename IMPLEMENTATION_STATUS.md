@@ -36,3 +36,12 @@ Last audit: milestone M2 (real-tenant validation preparation). Gates: `npm run t
 
 ## Review items
 See DECISIONS.md D-008 (links without `target`), D-012 (CSP; unused `img-src data:`; keep meta at all?), D-009 (build id requires a clean checkout).
+
+## Baseline for the LiveData milestone (recorded 2026-11-26, before any code change)
+Branch `claude/quirky-mayer-makdmo` (local, created from `main` at be7326c; the remote branch of that name is an ancestor of `main`). Working tree: only an unrelated `package-lock.json` version sync (0.1.0 -> 0.2.0) produced by `npm install`.
+Gates on Windows, Node 26.13.1, npm 11.20.0:
+- `npm run typecheck`: pass
+- `npm run lint`: pass
+- `npm test`: pass, 65 tests in 3 files
+- `npm run build`: pass (one chunk-size warning, pre-existing)
+- `npm run test:e2e`: pass, 7 tests, using `PW_CHROMIUM_PATH` set to the installed Microsoft Edge (`/opt/pw-browsers/chromium` does not exist on this machine)
