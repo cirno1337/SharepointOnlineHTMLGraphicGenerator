@@ -40,3 +40,28 @@ describe('resolveSelection', () => {
     expect(resolveSelection(wb, { selectionType: 'table', table: 'Nope' }).ok).toBe(false);
   });
 });
+
+describe('fixture formula cell Summary!B8 (evidence consistency)', () => {
+  // Formula text and cached result are asserted separately on purpose: the tenant lab compared
+  // B8 before/after a B7 change (34 -> 46), which is only consistent with `B7*2`, not `B7^2`.
+  it('stores formula text B7*2 and cached result 34 as separate properties', async () => {
+    const { default: ExcelJS } = await import('exceljs');
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(await buildStatusWorkbook());
+    const cell = wb.getWorksheet('Summary')?.getCell('B8');
+    expect(cell?.formula).toBe('B7*2');
+    expect(cell?.result).toBe(34);
+    expect((cell?.result as number) / 17).toBe(2); // doubling relationship with B7 = 17
+  });
+
+  it('the committed fixture file matches the generator (formula and cached result)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { default: ExcelJS } = await import('exceljs');
+    const wb = new ExcelJS.Workbook();
+    const buf = readFileSync('fixtures/project-status.xlsx');
+    await wb.xlsx.load(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer);
+    const cell = wb.getWorksheet('Summary')?.getCell('B8');
+    expect(cell?.formula).toBe('B7*2');
+    expect(cell?.result).toBe(34);
+  });
+});

@@ -83,7 +83,7 @@ Setup: live page `sphs-lab-ld04-c.html` (LD-04-C variant: working page with `scr
 Authorization events: Excel for the web first blocked editing with a sensitivity-label requirement; the owner then instructed to set up the label "General", which was applied (no other label, no other setting). No sharing change.
 Steps and observations:
 1. Applied label General (banner cleared, document showed Saved).
-2. Changed Summary!B7 from 17 to 23 (formula cell B8 `=B7^2` showed 46); autosave completed (cloud-check icon), about 15:44 to 15:45.
+2. Changed Summary!B7 from 17 to 23 (formula cell B8 showed 46, consistent with the fixture formula `=B7*2`; an earlier note misread the formula bar as `=B7^2`, which would give 529); autosave completed (cloud-check icon), about 15:44 to 15:45.
 3. The live page was NOT reloaded. Left it idle: no automatic update (page shows "Loaded 15:42:57", value 17). The page does not poll.
 4. Clicked only the page's Refresh button at about 15:46:07: the "Loaded" timestamp changed to 15:46:07 (so the frame re-initialised and the host re-ran its prefetch), but the value stayed **17**.
 5. About 90 seconds idle, no change.
@@ -94,3 +94,6 @@ Not measured: whether the iframe element itself was replaced (the Loaded timesta
 Security impact: the page can show data that is minutes stale without any indication; Studio's UI should show the loaded timestamp and must not describe the value as real time.
 Follow-up for the implementation: show "Loaded <time>" and the refresh result; document the delay; debounce Refresh.
 State left in the tenant: workbook label General applied; Summary!B7 left at **23** (not restored; restoring needs no sharing change but was not requested). The workbook still has the view-only sharing link from earlier.
+
+## Correction note (evidence consistency), recorded before the implementation phase
+Summary!B8 in the synthetic workbook is `=B7*2` with cached result 34 (verified in the generator `tests/helpers.ts`, in the committed fixture `fixtures/project-status.xlsx` raw XML `<f>B7*2</f><v>34</v>`, and by a new regression test that asserts formula text and cached result separately). The tenant observation (B8: 34 -> 46 when B7 went 17 -> 23) matches `B7*2`. The earlier LD-05 note of `=B7^2` was a misreading of the Excel formula bar and has been corrected; `B7^2` would have produced 529. No tenant workbook change was made to normalise this.
