@@ -1,0 +1,115 @@
+import { z } from 'zod';
+
+/** A scalar spreadsheet value after sanitising. Dates are ISO strings; formulas are cached results. */
+export const CellValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+export type CellValue = z.infer<typeof CellValueSchema>;
+
+const MAX_TEXT = 5000;
+const text = (max = MAX_TEXT) => z.string().max(max);
+
+export const SelectionSchema = z.discriminatedUnion('selectionType', [
+  z.object({ selectionType: z.literal('cell'), worksheet: text(255), address: z.string().regex(/^[A-Z]{1,3}[1-9][0-9]{0,6}$/) }),
+  z.object({ selectionType: z.literal('namedRange'), name: text(255) }),
+  z.object({ selectionType: z.literal('table'), table: text(255) }),
+]);
+export type Selection = z.infer<typeof SelectionSchema>;
+
+export const SnapshotValueSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('scalar'), value: CellValueSchema }),
+  z.object({
+    kind: z.literal('table'),
+    columns: z.array(text(255)).max(100),
+    rows: z.array(z.array(CellValueSchema).max(100)).max(5000),
+  }),
+]);
+export type SnapshotValue = z.infer<typeof SnapshotValueSchema>;
+
+/** Provenance + embedded values. No live connection is ever implied by this object. */
+export const BindingSchema = z.object({
+  provider: z.literal('excel-snapshot'),
+  workbookName: text(255),
+  lastImportedAt: z.string().max(40),
+  selection: SelectionSchema,
+  snapshot: SnapshotValueSchema,
+});
+export type Binding = z.infer<typeof BindingSchema>;
+
+const base = { id: z.string().min(1).max(64) };
+
+export const ComponentSchema = z.discriminatedUnion('type', [
+  z.object({ ...base, type: z.literal('heading'), text: text(300), level: z.union([z.literal(1), z.literal(2), z.literal(3)]) }),
+  z.object({ ...base, type: z.literal('text'), text: text() }),
+  z.object({ ...base, type: z.literal('callout'), tone: z.enum(['info', 'warning', 'success']), text: text() }),
+  z.object({
+    ...base,
+    type: z.literal('kpi'),
+    label: text(200),
+    value: text(200),
+    prefix: text(20).default(''),
+    suffix: text(20).default(''),
+    binding: BindingSchema.optional(),
+  }),
+  z.object({
+    ...base,
+    type: z.literal('table'),
+    caption: text(300),
+    columns: z.array(text(255)).max(100),
+    rows: z.array(z.array(CellValueSchema).max(100)).max(5000),
+    binding: BindingSchema.optional(),
+  }),
+]);
+export type Component = z.infer<typeof ComponentSchema>;
+export type ComponentType = Component['type'];
+
+export const ProjectSchema = z.object({
+  schemaVersion: z.literal(1),
+  name: text(200),
+  page: z.object({
+    title: text(200),
+    lang: z.string().regex(/^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/).default('en'),
+    accent: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#0f6cbd'),
+    components: z.array(ComponentSchema).max(500),
+  }),
+});
+export type Project = z.infer<typeof ProjectSchema>;
+
+export function emptyProject(): Project {
+  return {
+    schemaVersion: 1,
+    name: 'Untitled project',
+    page: {
+      title: 'Project status',
+      lang: 'en',
+      accent: '#0f6cbd',
+      components: [{ id: 'c1', type: 'heading', level: 1, text: 'Project status' }],
+    },
+  };
+}
+
+let counter = 0;
+export function newId(): string {
+  counter += 1;
+  return `c${Date.now().toString(36)}${counter}`;
+}
+
+export function newComponent(type: ComponentType): Component {
+  const id = newId();
+  switch (type) {
+    case 'heading':
+      return { id, type, level: 2, text: 'New heading' };
+    case 'text':
+      return { id, type, text: 'Write something here.' };
+    case 'callout':
+      return { id, type, tone: 'info', text: 'Important note.' };
+    case 'kpi':
+      return { id, type, label: 'Metric', value: '0', prefix: '', suffix: '' };
+    case 'table':
+      return { id, type, caption: 'Data table', columns: ['Column A', 'Column B'], rows: [['A1', 'B1']] };
+  }
+}
+
+export function parseProject(json: unknown): { ok: true; project: Project } | { ok: false; error: string } {
+  const r = ProjectSchema.safeParse(json);
+  if (r.success) return { ok: true, project: r.data };
+  return { ok: false, error: r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).slice(0, 5).join('; ') };
+}
