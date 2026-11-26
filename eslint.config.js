@@ -5,7 +5,7 @@ import jsxA11y from 'eslint-plugin-jsx-a11y';
 import globals from 'globals';
 
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules', 'playwright-report', 'test-results'] },
+  { ignores: ['dist', 'dist-live', 'node_modules', 'playwright-report', 'test-results'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -15,6 +15,11 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/ban-ts-comment': 'error',
     },
+  },
+  {
+    // Raw inline script embedded into Interactive Safe exports. Plain browser JS, no modules.
+    files: ['src/core/livedata/runtime.src.js'],
+    languageOptions: { sourceType: 'script', ecmaVersion: 2020, globals: { ...globals.browser } },
   },
   {
     files: ['src/editor/**/*.{ts,tsx}'],

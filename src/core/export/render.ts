@@ -1,6 +1,9 @@
 import { isSafeHref, type Component, type Project } from '../project';
 import { STUDIO_BUILD } from '../version';
 import { snapshotProvider } from '../providers';
+import { FRESHNESS_HINT } from '../livedata/constants';
+import { compileManifest, type CompiledManifest } from '../livedata/manifest';
+import { RUNTIME_SOURCE } from '../livedata/runtime';
 import { escapeHtml, formatCell } from './escape';
 
 /**
@@ -9,6 +12,16 @@ import { escapeHtml, formatCell } from './escape';
  * DECISIONS.md and the pinned test in tests/tenant.test.ts together.
  */
 export const EXPORT_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:";
+/** Static Safe profile: no script of any kind. Identical to the original policy. */
+export const STATIC_CSP = EXPORT_CSP;
+/**
+ * Interactive Safe profile (experimental). The only change from Static Safe is `script-src 'unsafe-inline'`,
+ * the smallest change found to let the LiveData runtime run in one tenant (lab LD-04: Studio's static policy
+ * blocked the inline script; adding this directive fixed it). `unsafe-inline` allows ANY inline script in the
+ * document, so the export validator requires the only executable script to be Studio's own runtime. Not
+ * claimed to work in other tenants. No connect-src, frame-src, external script/style or unsafe-eval.
+ */
+export const INTERACTIVE_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:";
 
 /** Values only known at export time. The editor preview renders without them. */
 export interface RenderContext {
@@ -49,6 +62,75 @@ a{color:#0a4f8f}
 .sphs-stamp dt{font-weight:600}.sphs-stamp dd{margin:0}
 `.trim();
 
+/** Only added to Interactive Safe exports that contain a Live KPI, so Static Safe output is unchanged. */
+const LIVE_CSS = `
+.sphs-live{gap:.4rem}
+.sphs-live__badge{align-self:flex-start;padding:.1rem .5rem;border:1px solid #8a5a00;border-radius:999px;font-size:.8rem;font-weight:600}
+.sphs-live__meta,.sphs-live__hint,.sphs-live__diag,.sphs-live__refresh-status,.sphs-live__threshold{color:var(--muted);font-size:.85rem}
+.sphs-live__message{font-size:.95rem}
+.sphs-live[data-sphs-state="error"] .sphs-live__message{font-weight:600}
+.sphs-live--warning{border-left-color:#8a5a00}
+.sphs-live--critical{border-left-color:#a4262c}
+.sphs-live__threshold{font-weight:600}
+.sphs-live__refresh{align-self:flex-start;padding:.35rem .8rem;border:1px solid var(--accent);border-radius:4px;background:#fff;color:#0a4f8f;font:inherit;cursor:pointer}
+.sphs-live__refresh:disabled{opacity:.6;cursor:default}
+.sphs-live__refresh:focus-visible{outline:3px solid #005a9e;outline-offset:2px}
+.sphs-live [hidden]{display:none}
+.sphs-live__diag,.sphs-live__hint,.sphs-live__meta,.sphs-live__message,.sphs-live__refresh-status{overflow-wrap:anywhere}
+`.trim();
+
+interface RenderOptions {
+  interactive: boolean;
+  manifest: CompiledManifest | null;
+}
+
+function domId(id: string): string {
+  return `sphs-${id.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+}
+
+function renderLiveKpi(c: Extract<Component, { type: 'liveKpi' }>, opts: RenderOptions): string {
+  const label = escapeHtml(c.label);
+  if (!opts.interactive) {
+    // Static Safe cannot run the runtime: show an honest placeholder (validation also blocks export).
+    return `<div class="sphs-kpi"><span class="sphs-kpi__label">${label}</span><strong class="sphs-kpi__value">—</strong><span>Live data requires the Interactive Safe profile.</span></div>`;
+  }
+  const index = opts.manifest?.indexBySourceId.get(c.sourceId);
+  const attrs: string[] = [
+    'data-sphs-live="kpi"',
+    `data-sphs-source="${index === undefined ? -1 : index}"`,
+    `data-sphs-sheet="${escapeHtml(c.worksheet)}"`,
+    `data-sphs-cell="${escapeHtml(c.cell)}"`,
+    `data-sphs-format="${c.numberFormat}"`,
+    `data-sphs-show-loaded="${c.showLoadedAt ? 1 : 0}"`,
+    `data-sphs-show-refresh="${c.showRefresh ? 1 : 0}"`,
+  ];
+  if (c.prefix) attrs.push(`data-sphs-prefix="${escapeHtml(c.prefix)}"`);
+  if (c.suffix) attrs.push(`data-sphs-suffix="${escapeHtml(c.suffix)}"`);
+  if (c.emptyText) attrs.push(`data-sphs-empty-text="${escapeHtml(c.emptyText)}"`);
+  if (c.errorText) attrs.push(`data-sphs-error-text="${escapeHtml(c.errorText)}"`);
+  if (c.warnAt !== undefined) attrs.push(`data-sphs-warn="${c.warnAt}"`);
+  if (c.criticalAt !== undefined) attrs.push(`data-sphs-critical="${c.criticalAt}"`);
+  if (c.fallback) {
+    attrs.push(`data-sphs-fallback-value="${escapeHtml(c.fallback.value)}"`);
+    if (c.fallback.importedAt) attrs.push(`data-sphs-fallback-at="${escapeHtml(c.fallback.importedAt)}"`);
+  }
+  const lid = domId(c.id);
+  return (
+    `<section class="sphs-kpi sphs-live" ${attrs.join(' ')} aria-labelledby="${lid}-label">` +
+    `<span class="sphs-kpi__label" id="${lid}-label">${label}</span>` +
+    `<strong class="sphs-kpi__value">—</strong>` +
+    `<span class="sphs-live__badge" hidden></span>` +
+    `<span class="sphs-live__threshold" hidden></span>` +
+    `<span class="sphs-live__meta" hidden></span>` +
+    `<span class="sphs-live__message" role="status">Loading live data…</span>` +
+    `<span class="sphs-live__diag" hidden></span>` +
+    `<button type="button" class="sphs-live__refresh" hidden>Refresh data</button>` +
+    `<span class="sphs-live__refresh-status" role="status" aria-live="polite"></span>` +
+    `<small class="sphs-live__hint">${escapeHtml(FRESHNESS_HINT)}</small>` +
+    `</section>`
+  );
+}
+
 function kpiValue(c: Extract<Component, { type: 'kpi' }>): string {
   if (c.binding) {
     const r = snapshotProvider.resolve(c.binding);
@@ -65,8 +147,10 @@ function tableData(c: Extract<Component, { type: 'table' }>) {
   return { columns: c.columns, rows: c.rows };
 }
 
-function renderComponent(c: Component, ctx: RenderContext | undefined): string {
+function renderComponent(c: Component, ctx: RenderContext | undefined, opts: RenderOptions): string {
   switch (c.type) {
+    case 'liveKpi':
+      return renderLiveKpi(c, opts);
     case 'heading':
       return `<h${c.level}>${escapeHtml(c.text)}</h${c.level}>`;
     case 'text':
@@ -105,23 +189,30 @@ export function renderPage(project: Project, ctx?: RenderContext): string {
   const { page } = project;
   const accent = /^#[0-9a-fA-F]{6}$/.test(page.accent) ? page.accent : '#0f6cbd';
   const lang = /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/.test(page.lang) ? page.lang : 'en';
-  const body = page.components.map((c) => renderComponent(c, ctx)).join('\n');
+  const interactive = page.exportProfile === 'interactive-safe';
+  const liveIds = new Set(page.components.flatMap((c) => (c.type === 'liveKpi' ? [c.sourceId] : [])));
+  const hasLive = liveIds.size > 0 || page.components.some((c) => c.type === 'liveKpi');
+  const manifest = interactive && hasLive ? compileManifest(page.liveSources, liveIds) : null;
+  const opts: RenderOptions = { interactive, manifest };
+  const body = page.components.map((c) => renderComponent(c, ctx, opts)).join('\n');
+  const css = CSS.replace('__ACCENT__', accent) + (interactive && hasLive ? `\n${LIVE_CSS}` : '');
+  const scripts = interactive && hasLive ? `\n${manifest?.scriptTag ?? ''}\n<script>\n${RUNTIME_SOURCE}\n</script>` : '';
   return `<!doctype html>
 <html lang="${escapeHtml(lang)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="${EXPORT_CSP}">
+<meta http-equiv="Content-Security-Policy" content="${interactive ? INTERACTIVE_CSP : STATIC_CSP}">
 <meta name="generator" content="SharePoint HTML Studio">
 <title>${escapeHtml(page.title)}</title>
 <style>
-${CSS.replace('__ACCENT__', accent)}
+${css}
 </style>
 </head>
 <body>
 <main>
 ${body}
-</main>
+</main>${scripts}
 </body>
 </html>
 `;

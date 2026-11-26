@@ -127,6 +127,6 @@ export function buildBaselineProject(): Project {
   return {
     schemaVersion: 1,
     name: BASELINE_TEMPLATE_NAME,
-    page: { title: BASELINE_TEMPLATE_NAME, lang: 'en', accent: '#0f6cbd', components: c },
+    page: { title: BASELINE_TEMPLATE_NAME, lang: 'en', accent: '#0f6cbd', exportProfile: 'static-safe', liveSources: [], components: c },
   };
 }
