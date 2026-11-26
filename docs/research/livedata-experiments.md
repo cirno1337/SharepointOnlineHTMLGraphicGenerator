@@ -30,16 +30,29 @@ Evidence classes: `MICROSOFT_DOCUMENTED`, `TENANT_OBSERVED_REPRODUCED` (more tha
 ## Planned in this milestone (not yet run)
 LD-01 minimal manifest fields; LD-04 Studio CSP compatibility; LD-05 refresh semantics (needs the synthetic workbook edited, approved designation); LD-06 multiple sources (needs a second authorized workbook, otherwise BLOCKED_REQUIRES_APPROVAL); LD-07 permission behavior (BLOCKED_REQUIRES_APPROVAL: needs a restricted test user); LD-08 failure states (local fixtures).
 
-## LD-01 Minimal manifest fields (in progress, 2026-11-26 ~15:27 local)
-Method: variants built inside the browser from the stored bytes of the working generated page; only the manifest array entry changes (kept keys listed); uploaded through Create or upload -> Upload HTML page as new `sphs-lab-ld01-<variant>.html` pages; viewed in a fresh tab in view mode. Browser: Microsoft Edge (Chromium). Studio commit: n/a (hand-built variants). Control: live-copy (full manifest) rendered KPI 17 and the table.
+## LD-01 Minimal manifest fields (2026-11-26, about 15:27 to 15:40 local)
+Method: variants built inside the browser from the stored bytes of the working generated page; only the manifest array entry changes (kept keys listed); uploaded via Create or upload -> Upload HTML page as new `sphs-lab-ld01-<variant>.html` pages; viewed in a fresh tab in view mode. Browser: Microsoft Edge (Chromium), driven through the Claude browser extension. Tenant alias `tenant-A`; workbook alias `wb-synthetic-status`. Control: `live-copy` (full manifest) rendered KPI 17 and the table. All variants keep every other byte of the page.
 
-| ID | Kept manifest keys | Result | Class |
-|---|---|---|---|
-| LD-01-A | spItemUrl | Page ran (Loaded timestamp shown, Refresh button) but showed "Summary B7 is unavailable." and no Issues table. This is NOT the "No prefetched result" error seen when the whole manifest is removed. The host returned a result for the key, but the page could not find the Summary sheet in it. | TENANT_OBSERVED_ONCE |
-| LD-01-B | spItemUrl, fileName | Uploaded as sphs-lab-ld01-b.html; **not yet viewed** (browser window went black before viewing) | UNKNOWN |
-| LD-01-C..G | not yet uploaded | not run | UNKNOWN |
+| ID | Kept manifest keys | Actual result | Result | Class |
+|---|---|---|---|---|
+| LD-01-A | spItemUrl | Page ran (loaded timestamp, Refresh) but showed "Summary B7 is unavailable." and no table. Not the "No prefetched result" error. | fail | TENANT_OBSERVED_ONCE |
+| LD-01-B | spItemUrl, fileName | KPI 17 and the Issues table rendered, fresh load timestamp | **pass (minimal working manifest)** | TENANT_OBSERVED_ONCE |
+| LD-01-H (extra) | filePath, fileName (no spItemUrl) | "Failed to load data: No prefetched result for <item URL>" | fail | TENANT_OBSERVED_ONCE |
+| LD-01-C, D, E, F, G | supersets of B | **not run.** B already passes without filePath, label and cslViewLink, so those are not needed for rendering. Individual effects are inferred, not tested. | not run | UNKNOWN |
 
-Hypothesis (HYPOTHESIS, untested): the host may use `fileName` (its extension) to choose the result `format`; without it the content may not arrive as the `xlsx-sheets` envelope. LD-01-B decides this.
-Security impact so far: none beyond LD-00b (page-chosen item URL).
-Follow-up: view B; then upload and view C, D, E, F, G; classify each as REQUIRED / OPTIONAL / NOT USED / INCONCLUSIVE.
-Tenant files created in this lab so far: sphs-lab-ld01-a.html, sphs-lab-ld01-b.html (Site Pages). Nothing deleted or overwritten.
+Field requirement matrix (observed runtime only, one tenant):
+
+| Field | Verdict | Basis |
+|---|---|---|
+| spItemUrl | REQUIRED: it is the key the host prefetches and injects under; without it the page reports "No prefetched result for <url>" | LD-01-H, LD-03 |
+| fileName | REQUIRED when spItemUrl is present (A fails, B passes). Mechanism unknown. HYPOTHESIS: the host derives the result format from the file extension. | LD-01-A vs B |
+| filePath | NOT NEEDED for rendering (B passes without it); individual removal untested | LD-01-B |
+| label | NOT NEEDED for rendering; individual removal untested | LD-01-B |
+| cslViewLink | NOT NEEDED for rendering in the author's session; role for other viewers UNKNOWN (LD-07 blocked) | LD-01-B |
+
+Do not infer security significance from runtime necessity alone: every run so far used the author's own access.
+
+Implications: (1) Studio cannot generate a working live page offline because it cannot know `spItemUrl`; Revision 1 therefore needs manual entry of the item URL (as planned). (2) `fileName` must be emitted with it. (3) Optional fields should be emitted only when intentionally kept, since their purpose for other viewers is untested.
+Security impact: unchanged from LD-00b; the page chooses what the host prefetches.
+Follow-up: LD-04 (Studio CSP), LD-05 (refresh), LD-07 (blocked), LD-08 (local fixtures).
+Tenant files created in this lab: sphs-lab-ld01-a.html, sphs-lab-ld01-b.html, sphs-lab-ld01-h.html (Site Pages). Nothing deleted, renamed or overwritten; no sharing change.
