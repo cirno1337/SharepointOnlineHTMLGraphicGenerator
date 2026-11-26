@@ -77,3 +77,10 @@ Nonce/hash practicality (HYPOTHESIS, reasoning not tested): a nonce in an upload
 Security impact: Studio's interactive profile must differ from the static profile only in `script-src 'unsafe-inline'`; the static profile keeps the current policy and no script.
 Follow-up: add `base-uri 'none'; form-action 'none'` to the interactive profile only after a tenant test shows they do not break rendering (UNKNOWN today); LD-05.
 Tenant files created: sphs-lab-ld04-b.html, sphs-lab-ld04-c.html (Site Pages). Nothing deleted, renamed or overwritten; no sharing change.
+
+## LD-05 Refresh semantics (2026-11-26, about 15:43 local) : BLOCKED_REQUIRES_APPROVAL
+Setup done: live page `sphs-lab-ld04-c.html` (working variant) loaded in its own tab showing KPI 17, "Loaded 15:42:57". The synthetic workbook `wb-synthetic-status` was opened for editing in Excel for the web in another tab.
+Blocker: before editing, Excel for the web showed a banner "Add sensitivity label: your organization requires you to label this document before editing" with a "Select label" button. Choosing a sensitivity label is a compliance/classification setting on the organization's data; it was not authorized, so no label was chosen and the workbook was not edited. The only interaction was a click that selected an empty cell (B5, because the banner shifted the grid). Summary!B7 is unchanged (17).
+Result: blocked, not inconclusive. No refresh claim is made. Class for refresh behavior: UNKNOWN (the Refresh button was not yet exercised; the generated runtime posts `{type:'ka-html-viewer-refresh'}` to the parent, which is a documented-by-code observation only).
+Needs approval: which sensitivity label (if any) to apply to the synthetic workbook, or an alternative way to change B7 (for example uploading a new version of the file, which also needs approval because it replaces content).
+Tenant side effects: none beyond the pages listed above. The workbook still has the view-only sharing link created earlier with approval.
