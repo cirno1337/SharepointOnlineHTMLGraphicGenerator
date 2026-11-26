@@ -78,9 +78,19 @@ Security impact: Studio's interactive profile must differ from the static profil
 Follow-up: add `base-uri 'none'; form-action 'none'` to the interactive profile only after a tenant test shows they do not break rendering (UNKNOWN today); LD-05.
 Tenant files created: sphs-lab-ld04-b.html, sphs-lab-ld04-c.html (Site Pages). Nothing deleted, renamed or overwritten; no sharing change.
 
-## LD-05 Refresh semantics (2026-11-26, about 15:43 local) : BLOCKED_REQUIRES_APPROVAL
-Setup done: live page `sphs-lab-ld04-c.html` (working variant) loaded in its own tab showing KPI 17, "Loaded 15:42:57". The synthetic workbook `wb-synthetic-status` was opened for editing in Excel for the web in another tab.
-Blocker: before editing, Excel for the web showed a banner "Add sensitivity label: your organization requires you to label this document before editing" with a "Select label" button. Choosing a sensitivity label is a compliance/classification setting on the organization's data; it was not authorized, so no label was chosen and the workbook was not edited. The only interaction was a click that selected an empty cell (B5, because the banner shifted the grid). Summary!B7 is unchanged (17).
-Result: blocked, not inconclusive. No refresh claim is made. Class for refresh behavior: UNKNOWN (the Refresh button was not yet exercised; the generated runtime posts `{type:'ka-html-viewer-refresh'}` to the parent, which is a documented-by-code observation only).
-Needs approval: which sensitivity label (if any) to apply to the synthetic workbook, or an alternative way to change B7 (for example uploading a new version of the file, which also needs approval because it replaces content).
-Tenant side effects: none beyond the pages listed above. The workbook still has the view-only sharing link created earlier with approval.
+## LD-05 Refresh semantics (2026-11-26, about 15:42 to 15:49 local)
+Setup: live page `sphs-lab-ld04-c.html` (LD-04-C variant: working page with `script-src 'unsafe-inline'` CSP) loaded in its own tab, showing KPI 17, "Loaded 15:42:57". Browser: Microsoft Edge (Chromium). Tenant `tenant-A`, workbook `wb-synthetic-status`.
+Authorization events: Excel for the web first blocked editing with a sensitivity-label requirement; the owner then instructed to set up the label "General", which was applied (no other label, no other setting). No sharing change.
+Steps and observations:
+1. Applied label General (banner cleared, document showed Saved).
+2. Changed Summary!B7 from 17 to 23 (formula cell B8 `=B7^2` showed 46); autosave completed (cloud-check icon), about 15:44 to 15:45.
+3. The live page was NOT reloaded. Left it idle: no automatic update (page shows "Loaded 15:42:57", value 17). The page does not poll.
+4. Clicked only the page's Refresh button at about 15:46:07: the "Loaded" timestamp changed to 15:46:07 (so the frame re-initialised and the host re-ran its prefetch), but the value stayed **17**.
+5. About 90 seconds idle, no change.
+6. Clicked Refresh again at about 15:48:36: "Loaded 15:48:36", value **23**.
+Result: refresh by the page's own button works without a manual page reload (pass), but the data seen by the first refresh (about 1 to 2 minutes after the save) was stale. A propagation or caching delay of between roughly 1 and 4 minutes after the workbook edit is likely (HYPOTHESIS: server-side caching of the prefetch or of the converted sheet content; exact delay UNKNOWN, one observation).
+Class: refresh re-prefetches: TENANT_OBSERVED_ONCE. Staleness after the first refresh: TENANT_OBSERVED_ONCE. Page does not auto-poll: TENANT_OBSERVED_ONCE.
+Not measured: whether the iframe element itself was replaced (the Loaded timestamp changing implies at least a script re-run); errors or banners (none visible).
+Security impact: the page can show data that is minutes stale without any indication; Studio's UI should show the loaded timestamp and must not describe the value as real time.
+Follow-up for the implementation: show "Loaded <time>" and the refresh result; document the delay; debounce Refresh.
+State left in the tenant: workbook label General applied; Summary!B7 left at **23** (not restored; restoring needs no sharing change but was not requested). The workbook still has the view-only sharing link from earlier.
