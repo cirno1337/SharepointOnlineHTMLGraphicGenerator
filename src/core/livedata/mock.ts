@@ -1,5 +1,6 @@
 import type { SheetData, WorkbookData } from '../excel/types';
-import { colToLetters } from '../excel/address';
+import { parseAddress } from '../excel/address';
+import { LIVEDATA_LIMITS } from './constants';
 import type { ManifestEntry } from './manifest';
 import { safeJsonForScript } from './manifest';
 
@@ -33,16 +34,37 @@ function csvField(v: string): string {
   return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 }
 
-/** Serialise a parsed sheet to CSV from A1 (blank rows and columns are kept so cell positions hold). */
+/**
+ * Serialise a parsed sheet to CSV from A1: rows count from row 1 and columns from column A, blank interior rows
+ * are kept as empty lines so cell positions hold, and each row is written only up to its last populated cell.
+ * Work is proportional to the number of POPULATED cells (not the used-range size) and bounded by the runtime's own
+ * row and column limits (anything beyond them would be rejected by the runtime anyway). An unbounded loop over a
+ * huge imported used range froze the editor (found in the adversarial audit).
+ */
 export function sheetToCsv(sheet: SheetData): string {
+  const maxRow = Math.min(sheet.maxRow, LIVEDATA_LIMITS.maxRows);
+  const maxCol = Math.min(sheet.maxCol, LIVEDATA_LIMITS.maxCellsPerRow - 1);
+  const byRow = new Map<number, Map<number, string>>();
+  let lastRow = 0;
+  for (const [addr, value] of Object.entries(sheet.cells)) {
+    const p = parseAddress(addr);
+    if (!p || p.row > maxRow || p.col > maxCol || value === null || value === undefined) continue;
+    let row = byRow.get(p.row);
+    if (!row) byRow.set(p.row, (row = new Map()));
+    row.set(p.col, String(value));
+    if (p.row > lastRow) lastRow = p.row;
+  }
   const lines: string[] = [];
-  for (let r = 1; r <= sheet.maxRow; r++) {
-    const cols: string[] = [];
-    for (let c = 1; c <= sheet.maxCol; c++) {
-      const v = sheet.cells[`${colToLetters(c)}${r}`];
-      cols.push(v === undefined || v === null ? '' : csvField(String(v)));
+  for (let r = 1; r <= lastRow; r++) {
+    const row = byRow.get(r);
+    if (!row) {
+      lines.push('');
+      continue;
     }
-    lines.push(cols.join(','));
+    const width = Math.max(...row.keys());
+    const cells: string[] = [];
+    for (let c = 1; c <= width; c++) cells.push(csvField(row.get(c) ?? ''));
+    lines.push(cells.join(','));
   }
   return lines.length === 0 ? '' : `${lines.join('\n')}\n`;
 }
@@ -107,4 +129,13 @@ export function buildMockResults(entries: readonly ManifestEntry[], wb: Workbook
 /** `<script>` that defines window.__LD_RESULTS__ for the preview frame (injected by the editor, never exported). */
 export function mockInjectionScript(results: Record<string, MockHostResult>): string {
   return `<script>window.__LD_RESULTS__=${safeJsonForScript(results)};</script>`;
+}
+
+/**
+ * Insert the mock script right after `<head>`. A replacer FUNCTION is required: with a replacement string,
+ * `$&`, `$'` and `` $` `` in workbook text would be expanded by String.replace and could corrupt or break
+ * out of the script (found in the adversarial audit).
+ */
+export function injectMockScript(html: string, script: string): string {
+  return html.replace('<head>', () => `<head>\n${script}`);
 }

@@ -45,3 +45,10 @@ Gates on Windows, Node 26.13.1, npm 11.20.0:
 - `npm test`: pass, 65 tests in 3 files
 - `npm run build`: pass (one chunk-size warning, pre-existing)
 - `npm run test:e2e`: pass, 7 tests, using `PW_CHROMIUM_PATH` set to the installed Microsoft Edge (`/opt/pw-browsers/chromium` does not exist on this machine)
+
+## LiveData milestone (2026-11-26): experimental SharePoint Live Excel, local implementation
+Readiness: **READY_FOR_CONTROLLED_TENANT_TEST** (maximum allowed). Not production ready. Studio's own runtime has not been run in a tenant. **Permission isolation has not yet been validated with a viewer who can access the page but not the workbook. LiveData is not approved for limited pilot until LD-07 passes.**
+
+Implemented (all behind `VITE_EXPERIMENTAL_EXCEL_LIVE=true`; Snapshot remains the default): manifest compiler (`spItemUrl`, `fileName` only), `SharePointExcelLive` provider, xlsx-sheets envelope parser, RFC 4180 CSV parser, strict single-cell A1 selection, Live Excel KPI with labelled snapshot fallback, Interactive Safe export profile, Mock LiveData preview, edit-mode/no-prefetch state, fixed refresh message with cooldown, validation and report fields, LD-09 probe page, sanitized diagnostics.
+Final gates: typecheck, lint, build and `npm test` (179 unit tests) pass; Playwright 16 tests pass (7 existing + 9 LiveData) using the installed Edge via `PW_CHROMIUM_PATH`.
+Known open items: A1 addressing unverified (LD-09); LD-06 and LD-07 blocked pending approval; refresh latency unquantified; no table/range/chart/live list support; CSP effectiveness proven in one tenant only. See `docs/audits/livedata-implementation-audit.md`.

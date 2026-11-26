@@ -78,7 +78,14 @@ export const CAPABILITIES: readonly Capability[] = [
     label: 'Live Excel data in HTML pages',
     status: 'EXPERIMENTAL',
     notes:
-      'Microsoft states live lists/Excel data exists, but neither page documents the binding contract. Studio cannot generate it; the live provider is a disabled stub.',
+      'Microsoft documents that live lists/Excel (and, in the blog post, CSV) data exists, but neither page documents the binding contract. Studio implements an EXPERIMENTAL, feature-flagged provider for the contract observed in one tenant on 2026-11-26 (revision observed-2026-11-r1). It is undocumented, may change without notice, and permission isolation (LD-07) is unvalidated.',
+    source: `${SUPPORT} ; ${BLOG}`,
+  },
+  {
+    id: 'ms-managed-libraries',
+    label: 'Chart.js, Mermaid, React, Fluent UI and Babylon from a Microsoft-managed CDN',
+    status: 'CONFIRMED',
+    notes: 'Documented as supported. Studio does not use them; its exports load no external script.',
     source: `${SUPPORT} ; ${BLOG}`,
   },
   {

@@ -1,3 +1,5 @@
+import { injectMockScript } from '../core/livedata/mock';
+
 interface Props {
   html: string;
   /** Interactive Safe pages need scripts; they get `allow-scripts` only (never same-origin) plus mock host data. */
@@ -8,7 +10,7 @@ interface Props {
 
 /** Renders the real export output in a sandboxed iframe (no same-origin; scripts only for Interactive Safe). */
 export function Preview({ html, interactive = false, mockScript = null }: Props) {
-  const doc = interactive && mockScript ? html.replace('<head>', `<head>\n${mockScript}`) : html;
+  const doc = interactive && mockScript ? injectMockScript(html, mockScript) : html;
   return (
     <section aria-labelledby="preview-h" className="panel preview">
       <h2 id="preview-h">Preview</h2>

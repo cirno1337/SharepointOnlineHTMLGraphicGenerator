@@ -97,3 +97,29 @@ State left in the tenant: workbook label General applied; Summary!B7 left at **2
 
 ## Correction note (evidence consistency), recorded before the implementation phase
 Summary!B8 in the synthetic workbook is `=B7*2` with cached result 34 (verified in the generator `tests/helpers.ts`, in the committed fixture `fixtures/project-status.xlsx` raw XML `<f>B7*2</f><v>34</v>`, and by a new regression test that asserts formula text and cached result separately). The tenant observation (B8: 34 -> 46 when B7 went 17 -> 23) matches `B7*2`. The earlier LD-05 note of `=B7^2` was a misreading of the Excel formula bar and has been corrected; `B7^2` would have produced 529. No tenant workbook change was made to normalise this.
+
+## Implementation-phase additions (2026-11-26, local only; no tenant operations)
+
+### LD-01-A reinterpreted (HYPOTHESIS, from reading the generated page's code)
+The Copilot-generated page's `render()` read the KPI as `headers[1]` of the first NON-BLANK line of the Summary CSV (it filtered blank lines before parsing) and showed "Summary B7 is unavailable" when that line had fewer than two columns. So the LD-01-A message means the sheet text it received did not parse to a two-column first line; it does not prove the host returned no data. It also means the lab never exercised positional addressing: whether CSV row 1 / column 1 is Excel A1 is UNKNOWN. Studio assumes it is, shows the `live-addressing` warning, and ships a probe page to settle it (LD-09).
+
+### Evidence classification review
+- LD-02 (marker not required): `TENANT_OBSERVED_ONCE` (one variant; LD-01 variants B and H never carried it either, which is consistent but is not a repeat of the same test).
+- LD-03 (manifest required): `TENANT_OBSERVED_REPRODUCED` (removing it failed in LD-03, and a manifest without `spItemUrl` failed in LD-01-H with the same message).
+- Uploaded pages receive data: `TENANT_OBSERVED_REPRODUCED` (several uploaded variants).
+- Provider-level classification used in code: `tenant-observed-reproduced` (manifest mechanism), while individual field findings keep their own class.
+
+### LD-06 multiple sources: `BLOCKED_REQUIRES_APPROVAL`
+No second already-authorized synthetic workbook exists and creating one would need a sharing link. Not run. Local coverage only: manifest deduplication, distinct sources, invalid source skipped, and per-KPI isolation are unit-tested against Studio's runtime.
+
+### LD-07 permission behavior: `BLOCKED_REQUIRES_APPROVAL` (required security gate)
+Not run. Protocol in `docs/testing/livedata-controlled-tenant-test.md`. LiveData is not approved for limited pilot until it passes.
+
+### LD-08 failure states: local fixtures, done
+Covered by unit tests against the exact exported runtime run in an isolated VM, and by e2e in a real browser: missing `__LD_RESULTS__`, missing key, `error`/`errorCode`, empty content, unsupported format, malformed envelope, missing worksheet, missing cell, bad address, empty cell, duplicate sheet names (first wins), Unicode sheet names, quoted commas/quotes/newlines, CRLF/LF/CR, BOM, formula-, markup- and script-looking values, oversized input (content, sheets, rows, columns, cell length). No tenant action was needed. Class: not a tenant observation; behavior of Studio's own code.
+
+### LD-09 envelope and addressing fidelity probe: PLANNED
+`renderProbePage` generates the diagnostic page; protocol in the controlled tenant test document. Not uploaded (no tenant operations in this phase).
+
+### Read-only inspection performed during this phase
+One read-only fetch of the Copilot-generated page's stored file from the author's browser to read how it indexed CSV rows. No tenant content was changed.

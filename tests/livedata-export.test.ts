@@ -91,6 +91,8 @@ describe('Interactive Safe profile', () => {
   });
   it('renders accessible, escaped KPI markup with the freshness hint and no live value baked in', () => {
     const k = html.match(/<section class="sphs-kpi sphs-live"[\s\S]*?<\/section>/)![0];
+    expect(k).toContain('role="group"');
+    expect(k).toContain('role="group"'); // a labelled group, not a landmark per KPI
     expect(k).toContain('aria-labelledby="sphs-k1-label"');
     expect(k).toContain('data-sphs-source="0"');
     expect(k).toContain('data-sphs-sheet="Summary"');

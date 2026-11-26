@@ -373,3 +373,31 @@ describe('exported runtime source', () => {
     expect((RUNTIME_SOURCE.match(/setTimeout\(/g) ?? []).length).toBe(1);
   });
 });
+
+describe('audit regression: mock script injection and CSV bounds', () => {
+  it('injects the mock script literally even when workbook text contains $-replacement patterns', async () => {
+    const { injectMockScript, mockInjectionScript } = await import('../src/core/livedata/mock');
+    const wb = mockFixtureWorkbook();
+    wb.sheets[0]!.cells.A1 = "$& $' $` $1 $$ </script><script>window.__x=1</script>";
+    const entries = compileManifest([fixtureSource()]).entries;
+    const script = mockInjectionScript(buildMockResults(entries, wb, 'ok'));
+    const html = '<!doctype html><html><head><meta charset="utf-8"></head><body><main>MARKER</main></body></html>';
+    const out = injectMockScript(html, script);
+    expect(out).toBe(`<!doctype html><html><head>\n${script}<meta charset="utf-8"></head><body><main>MARKER</main></body></html>`);
+    expect(out.split('MARKER').length).toBe(2); // "$'" must not have duplicated the rest of the page
+    expect([...out.matchAll(/<script\b/g)]).toHaveLength(1);
+  });
+  it('generates CSV in time proportional to populated cells and within the runtime limits (no editor freeze)', () => {
+    const sheet = { name: 'Big', cells: { A1: 'x', AA9000: 'far', C20000: 'beyond-row-limit', 'XFD3': 'beyond-col-limit' }, maxRow: 1_000_000, maxCol: 16_000 };
+    const t0 = Date.now();
+    const csv = sheetToCsv(sheet);
+    expect(Date.now() - t0).toBeLessThan(500);
+    const lines = csv.split('\n');
+    lines.pop(); // trailing newline
+    expect(lines).toHaveLength(9000); // rows beyond maxRows are dropped
+    expect(lines[0]).toBe('x');
+    expect(lines[1]).toBe(''); // blank interior rows are kept so positions hold
+    expect(lines[8999]!.split(',')).toHaveLength(27); // AA is column 27
+    expect(csv).not.toContain('beyond');
+  });
+});

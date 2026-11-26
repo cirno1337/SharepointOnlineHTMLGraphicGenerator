@@ -91,6 +91,24 @@ export function TenantExportPanel({ project, hasErrors, liveEnabled = false }: P
               </dd>
             </div>
             <div>
+              <dt>Export profile</dt>
+              <dd data-testid="tenant-profile">{r.exportProfile === 'interactive-safe' ? 'Interactive Safe (experimental LiveData)' : 'Static Safe (no script)'}</dd>
+            </div>
+            {r.liveData.experimentalFeatureUsed && (
+              <>
+                <div>
+                  <dt>LiveData contract</dt>
+                  <dd data-testid="tenant-live-contract">
+                    {r.liveData.contractRevision} (undocumented; {r.liveData.manifestSourceCount} source(s))
+                  </dd>
+                </div>
+                <div>
+                  <dt>Identifiers in the file</dt>
+                  <dd data-testid="tenant-live-identifiers">The file contains the workbook item URL (tenant host and identifiers). Do not share it outside the tenant. No sharing link is included, and viewers need access to the workbook.</dd>
+                </div>
+              </>
+            )}
+            <div>
               <dt>Studio build</dt>
               <dd className="mono">{r.studio.build}</dd>
             </div>

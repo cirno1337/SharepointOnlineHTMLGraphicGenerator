@@ -24,3 +24,14 @@
 - Export validator for documented SharePoint constraints (10 MB, no external scripts/resources, no fetch/XHR/WebSocket/Graph/REST/localStorage, no editor runtime).
 - Vitest unit tests and Playwright e2e tests; synthetic fixture `fixtures/project-status.xlsx`.
 - Research notes with Microsoft sources.
+
+## 0.3.0 — Unreleased (experimental SharePoint Live Excel)
+### Added (feature-flagged: `VITE_EXPERIMENTAL_EXCEL_LIVE=true`; off by default)
+- Experimental SharePoint Live Excel based on an undocumented behavior observed in one tenant (contract revision `observed-2026-11-r1`): manifest compiler, inline runtime, xlsx-sheets and CSV parsers, A1 cell selection, Live Excel KPI, snapshot fallback, Mock LiveData preview, LD-09 probe page.
+- Export profiles: Static Safe (default, byte-identical to the previous export) and Interactive Safe (adds `script-src 'unsafe-inline'`).
+- Validation report: `exportProfile` and `liveData` section; schemas regenerated.
+- Docs: observed contract, experiment ledger, threat model, controlled tenant test protocol, audit, Copilot issue write-up.
+### Changed
+- Export validator is profile-aware (strict manifest, runtime equality, CSP-matches-profile, extra forbidden APIs).
+### Not done
+- LD-06, LD-07 (security gate), LD-09; no list/range/table/chart live components; no tenant validation of Studio's runtime.

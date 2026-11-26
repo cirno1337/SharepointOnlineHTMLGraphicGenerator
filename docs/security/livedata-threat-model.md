@@ -1,0 +1,30 @@
+# LiveData threat model (experimental, observed contract revision `observed-2026-11-r1`)
+
+Status: written 2026-11-26 for the local implementation. **Permission isolation has not yet been validated with a viewer who can access the page but not the workbook. LiveData is not approved for limited pilot until LD-07 passes.** Nothing here claims SharePoint compatibility.
+
+Assets: workbook data; the workbook item URL (tenant host + drive/item identifiers); sharing links; the page's integrity; the author's project files.
+
+| # | Threat | How it arises | Mitigation in Studio | Residual risk |
+|---|---|---|---|---|
+| T1 | Leaked drive/item IDs | The exported page must contain the item URL; project JSON stores it | Documented as sensitive; save-project confirmation; masked diagnostics (`ref-xxxxxxxx`) everywhere in UI, reports and runtime messages; validation report records only that identifiers are present; tests assert no ID in report, diagnostics or errors; repository scan | The exported HTML itself contains the URL by design. Do not publish it outside the tenant. |
+| T2 | Leaked sharing links | User types a `cslViewLink` | Stored only in project JSON, never emitted (tests), unsafe forms rejected, warning shown | A user can still commit a project file with it; `*.studio.json` is git-ignored |
+| T3 | Signed URLs | URL pasted with `sig=`/`token=` | Item URL and sharing link validators reject queries, fragments, signature/token parameters, credentials, `javascript:`, `data:` | Shape check only; not verified against SharePoint |
+| T4 | Permission confusion / unauthorized exposure | Page author references a workbook the viewer should not see; host might prefetch with the author's rights | None possible in Studio (the host decides). Report flags `explicitSharingDecisionRequired`; notices in UI, validation, docs | **UNKNOWN until LD-07.** If a viewer without workbook access receives data this is a SECURITY BLOCKER; stop and do not work around permissions |
+| T5 | Stale snapshot mistaken for live | Fallback value shown when live data fails | Fallback is always labelled "Snapshot fallback" with its own timestamp, never shows a "Loaded from SharePoint" time, never silently substituted (unit + e2e tests) | Users may still ignore the label |
+| T6 | Malicious workbook cell content | Cell holds HTML, script, formula, `javascript:` | All values inserted with `textContent`; no `innerHTML` anywhere in the runtime (validator and test forbid it); no formula evaluation; no links created from cells (tests, e2e: no `<img>` appears, no side effect) | Display spoofing with plain text |
+| T7 | Malicious CSV content | Pathological quoting, huge cells, huge input | RFC 4180 parser with limits: 2,000,000 chars, 50 sheets, 10,000 rows, 500 cells per row, 5,000 chars per cell, 255-char sheet names; failures stay inside the affected KPI (tests) | A hostile workbook can make its own KPIs show errors |
+| T8 | Script-breaking manifest/config | `</script>`, quotes, U+2028 in strings | JSON embedded with `<`, `>`, `&`, U+2028/9 escaped; all attributes HTML-escaped; manifest validated strictly by the export validator; invalid sources are skipped and block export | none known |
+| T9 | `postMessage` abuse | Runtime talks to its parent | Only the fixed `{type:'ka-html-viewer-refresh'}` object, target origin `*` as in the observed page (documented in code); no data in the message; no inbound message listener | Another origin could observe a content-free message |
+| T10 | Logs/telemetry carrying identifiers | Diagnostics copied by users | Sanitized diagnostic has no host or identifier; visible diagnostics use masked refs; no analytics; nothing is logged to the console | Users can paste their own project JSON |
+| T11 | Project JSON disclosure | Saved file contains item URL | Save-project confirmation when sources exist; `*.studio.json` git-ignored; docs | none beyond user behavior |
+| T12 | Manifest contract drift | Microsoft changes or removes the behavior | Marked experimental and undocumented in UI, reports, code and docs; revision id `observed-2026-11-r1`; missing data shows a clear state instead of failing silently | Pages may stop showing live data without notice |
+| T13 | Oversized LiveData results | Large workbook | Limits above; rejection per KPI | Browser memory for very large host payloads |
+| T14 | Unsupported format change | Host sends another `format` | Only `xlsx-sheets` is accepted; others show "format not supported" with a masked diagnostic | Lists and CSV sources are not supported |
+| T15 | `script-src 'unsafe-inline'` | Needed for the inline runtime (LD-04) | Export validator requires the only executable script to equal Studio's runtime byte for byte plus the JSON manifest; inline handlers and `javascript:` rejected; every dynamic string escaped; `default-src 'none'` retained | Any future escaping bug in the renderer becomes script injection. Hash/nonce not practical (HYPOTHESIS) |
+| T16 | Preview-frame injection | Workbook text reaching the preview script | Preview frame is `sandbox="allow-scripts"` (no same-origin); mock script built with safe JSON and inserted with a replacer function (an audit found `String.replace` `$'` expansion; fixed with a regression test) | Sandbox only |
+| T17 | Editor freeze from huge imported workbooks | `sheetToCsv` iterated the used range | Work proportional to populated cells, bounded by the runtime limits (audit finding, fixed, tested) | none known |
+| T18 | Wrong cell shown | CSV may not start at A1 | Warning `live-addressing`; probe page LD-09; documented as unverified | **Open until LD-09** |
+
+Invariants the code enforces and tests check: no network, storage, `eval`/`Function`, dynamic import, worker or HTML-string-injection API in any export; no credentials, tokens, cookies or signed URLs; no sharing change or permission request by Studio; no hidden network fallback; Static Safe output is byte-identical to the a0525ce export.
+
+Release gate: LiveData stays experimental until LD-07 passes or its failure is explicitly accepted as an unresolved blocker. The maximum readiness now is `READY_FOR_CONTROLLED_TENANT_TEST`.

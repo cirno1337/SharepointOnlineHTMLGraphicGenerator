@@ -62,3 +62,9 @@ Microsoft states that HTML renders "in a sandboxed iframe" with "Content Securit
 
 - `img-src data:` is unused today. Keep (documented platform support, harmless) or remove until an image component exists?
 - Should the meta CSP stay at all if tenant testing shows SharePoint strips it or its platform policy already covers the same ground? Its remaining value is defense in depth for copies of the file outside SharePoint.
+
+## Interactive Safe profile (experimental, added 2026-11-26)
+
+`default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:` (constant `INTERACTIVE_CSP`). Evidence: LD-04, one tenant. Studio's static policy stopped the LiveData page script (static markup rendered, no value); adding only `script-src 'unsafe-inline'` fixed it (`TENANT_OBSERVED_ONCE` each). The CSP `<meta>` survived upload unchanged; the file's response header carried only `frame-ancestors`. The `blob:` frame's own CSP is unknown. This is not claimed to work in any other tenant.
+
+Tradeoff: `unsafe-inline` allows any inline script in the document, so the CSP no longer blocks injected inline script. Compensations: the export validator requires the only executable script to equal Studio's runtime byte for byte (plus one JSON manifest), rejects inline event handlers and `javascript:`, requires the meta to equal the selected profile's policy, and all dynamic text is escaped. `connect-src` stays blocked through `default-src 'none'`; no `frame-src`, external script/style, or `unsafe-eval`. `base-uri` and `form-action` remain unset in both profiles (they do not fall back to `default-src`); the exporter never emits `<base>` or `<form>`. Nonce or hash instead of `unsafe-inline`: not adopted (a nonce in a static file is not secret; SharePoint rewrites the stored file, so a hash may stop matching; both are hypotheses). Static Safe keeps its policy unchanged and contains no script.

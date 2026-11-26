@@ -116,7 +116,7 @@ function renderLiveKpi(c: Extract<Component, { type: 'liveKpi' }>, opts: RenderO
   }
   const lid = domId(c.id);
   return (
-    `<section class="sphs-kpi sphs-live" ${attrs.join(' ')} aria-labelledby="${lid}-label">` +
+    `<section class="sphs-kpi sphs-live" role="group" ${attrs.join(' ')} aria-labelledby="${lid}-label">` +
     `<span class="sphs-kpi__label" id="${lid}-label">${label}</span>` +
     `<strong class="sphs-kpi__value">—</strong>` +
     `<span class="sphs-live__badge" hidden></span>` +
