@@ -56,3 +56,24 @@ Implications: (1) Studio cannot generate a working live page offline because it 
 Security impact: unchanged from LD-00b; the page chooses what the host prefetches.
 Follow-up: LD-04 (Studio CSP), LD-05 (refresh), LD-07 (blocked), LD-08 (local fixtures).
 Tenant files created in this lab: sphs-lab-ld01-a.html, sphs-lab-ld01-b.html, sphs-lab-ld01-h.html (Site Pages). Nothing deleted, renamed or overwritten; no sharing change.
+
+## LD-04 Studio CSP compatibility (2026-11-26, about 15:40 to 15:45 local)
+Control: `live-copy` (working LiveData page, no CSP meta; renders KPI 17 and the table). Browser: Microsoft Edge (Chromium). Tenant `tenant-A`, workbook `wb-synthetic-status`. Method: only a `<meta http-equiv="Content-Security-Policy">` inserted as the first element of `<head>`; uploaded as a new page; viewed in a fresh tab in view mode. Studio's policy was not loosened for the first test.
+
+| ID | CSP meta added | Actual result | Result | Class |
+|---|---|---|---|---|
+| LD-04-B | `default-src 'none'; style-src 'unsafe-inline'; img-src data:` (Studio's exact policy) | Static markup and styling rendered (lede text, Refresh button) but no "Loaded" timestamp, no KPI, no table: the inline script did not run. | **fail (expected from CSP semantics: script-src falls back to default-src)** | TENANT_OBSERVED_ONCE |
+| LD-04-C | `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:` | KPI 17, Issues table, fresh "Loaded" timestamp and Refresh button all rendered | **pass** | TENANT_OBSERVED_ONCE |
+
+Observations:
+- The CSP meta survives in the stored file byte-for-byte and stays first in `<head>` (stored size 19,146 vs 19,195 uploaded).
+- The server response header on the page file contains only a `frame-ancestors` list (Microsoft hosts); it has no script-src, style-src or default-src (checked on the LD-04-B file). So the meta policy is the only script policy applied to the page document by that header. Whether the host adds a CSP to the sandboxed frame document itself is UNKNOWN (the frame is a `blob:` document; its headers are not observable from the page).
+- Console CSP errors were not accessible (no DevTools through the extension). The failure signature is inferred from rendering only.
+- The host injection of `window.__LD_RESULTS__` and the page's own inline script both worked under the C policy, so the host does not need any other directive that Studio omitted (no connect-src, no frame-src, no script-src host allow-list).
+
+Minimal required change from Studio's current CSP: add `script-src 'unsafe-inline'`. Not tested: whether a hash or nonce would work instead (see below), `script-src 'unsafe-inline'` with `default-src 'none'` vs without; refresh under CSP (LD-05).
+Security tradeoff: `script-src 'unsafe-inline'` allows any inline script in the document, so the CSP no longer blocks injected inline script. Mitigations: all dynamic text is escaped before emission, workbook data is only ever inserted as text, `default-src 'none'` still blocks connect-src, frames, objects, fonts, images except data:, workers and external scripts; `base-uri` and `form-action` are still unset (they do not fall back to default-src).
+Nonce/hash practicality (HYPOTHESIS, reasoning not tested): a nonce in an uploaded static file is not secret (same bytes for every viewer), so it adds no protection against an attacker who can edit the file; a hash is possible but fragile: SharePoint rewrote the stored file (34-byte difference seen in the live-copy upload; mso block and xmlns attributes are inserted), and a comment in the generated runtime says the host's security layer rewrites some script globals, so a hash of the script text could silently stop matching. Hash testing is a follow-up experiment.
+Security impact: Studio's interactive profile must differ from the static profile only in `script-src 'unsafe-inline'`; the static profile keeps the current policy and no script.
+Follow-up: add `base-uri 'none'; form-action 'none'` to the interactive profile only after a tenant test shows they do not break rendering (UNKNOWN today); LD-05.
+Tenant files created: sphs-lab-ld04-b.html, sphs-lab-ld04-c.html (Site Pages). Nothing deleted, renamed or overwritten; no sharing change.
