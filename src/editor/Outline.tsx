@@ -10,6 +10,8 @@ const TYPES: { type: ComponentType; label: string }[] = [
   { type: 'link', label: 'Link' },
   { type: 'stamp', label: 'Export info' },
 ];
+/** Offered only when VITE_EXPERIMENTAL_EXCEL_LIVE=true. */
+const LIVE_TYPE: { type: ComponentType; label: string } = { type: 'liveKpi', label: 'Live KPI (experimental)' };
 
 export function summary(c: Component): string {
   switch (c.type) {
@@ -27,6 +29,8 @@ export function summary(c: Component): string {
       return `KPI: ${c.label}${c.binding ? ' (bound)' : ''}`;
     case 'table':
       return `Table: ${c.caption}${c.binding ? ' (bound)' : ''}`;
+    case 'liveKpi':
+      return `Live KPI: ${c.label} (${c.worksheet}!${c.cell}, experimental)`;
   }
 }
 
@@ -35,14 +39,15 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   dispatch: (a: Action) => void;
+  liveEnabled: boolean;
 }
 
-export function Outline({ components, selectedId, onSelect, dispatch }: Props) {
+export function Outline({ components, selectedId, onSelect, dispatch, liveEnabled }: Props) {
   return (
     <section aria-labelledby="outline-h" className="panel">
       <h2 id="outline-h">Page outline</h2>
       <div role="group" aria-label="Add component" className="row wrap">
-        {TYPES.map((t) => (
+        {(liveEnabled ? [...TYPES, LIVE_TYPE] : TYPES).map((t) => (
           <button key={t.type} type="button" onClick={() => dispatch({ type: 'add', component: t.type })}>
             Add {t.label}
           </button>

@@ -6,9 +6,10 @@ import { downloadText } from './download';
 interface Props {
   project: Project;
   hasErrors: boolean;
+  liveEnabled?: boolean;
 }
 
-export function TenantExportPanel({ project, hasErrors }: Props) {
+export function TenantExportPanel({ project, hasErrors, liveEnabled = false }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TenantExport | null>(null);
@@ -17,7 +18,7 @@ export function TenantExportPanel({ project, hasErrors }: Props) {
     setBusy(true);
     setError(null);
     try {
-      setResult(await createTenantTestExport(project));
+      setResult(await createTenantTestExport(project, undefined, { liveEnabled }));
     } catch (e) {
       setResult(null);
       setError(e instanceof Error ? e.message : 'Tenant test export failed.');
@@ -33,7 +34,7 @@ export function TenantExportPanel({ project, hasErrors }: Props) {
     <section aria-labelledby="tenant-h" className="panel" data-testid="tenant-panel">
       <h2 id="tenant-h">Tenant test export</h2>
       <p className="muted">
-        Generates the normal static export plus a separate validation report with exact size and SHA-256. Nothing is added to the page: no scripts, no network calls, no tenant URLs or credentials.
+        Generates the normal export for the selected profile plus a separate validation report with exact size and SHA-256. Static Safe contains no script. Interactive Safe (experimental) contains only Studio's inline runtime and a manifest holding the workbook item URL (tenant host and identifiers). No network calls, credentials or sharing links are added.
         Follow docs/testing/real-tenant-baseline.md. Passing here does not prove SharePoint compatibility.
       </p>
       <button type="button" onClick={() => void run()} disabled={busy || hasErrors} aria-describedby="tenant-hint">

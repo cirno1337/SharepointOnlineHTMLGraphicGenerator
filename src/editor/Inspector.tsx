@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { normalizeAddress } from '../core/excel/address';
 import { makeBinding } from '../core/excel/resolve';
 import type { WorkbookData } from '../core/excel/types';
+import { parseLiveCellAddress, type LiveSource } from '../core/livedata/source';
 import { isSafeHref, linkKind, type Binding, type Component, type Selection } from '../core/project';
 import type { Pick } from './WorkbookPanel';
 
@@ -9,7 +10,116 @@ interface Props {
   component: Component | null;
   workbook: WorkbookData | null;
   pick: Pick | null;
+  liveSources: LiveSource[];
   onChange: (c: Component) => void;
+}
+
+type LiveKpi = Extract<Component, { type: 'liveKpi' }>;
+
+function numOrUndefined(v: string): number | undefined {
+  if (v.trim() === '') return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/** Inspector for the EXPERIMENTAL Live Excel KPI. Excel selection (sheet + cell) is separate from the data source. */
+function LiveKpiEditor({ c, workbook, liveSources, onChange }: { c: LiveKpi; workbook: WorkbookData | null; liveSources: LiveSource[]; onChange: (c: Component) => void }) {
+  const cellOk = parseLiveCellAddress(c.cell) !== null;
+  function useWorkbookValue() {
+    const v = workbook?.sheets.find((s) => s.name === c.worksheet)?.cells[c.cell];
+    if (v === undefined || v === null) return;
+    onChange({ ...c, fallback: { value: String(v), importedAt: workbook?.importedAt } });
+  }
+  return (
+    <>
+      <p role="note" className="error">
+        Experimental. Uses an undocumented SharePoint behavior; see the Live Excel panel.
+      </p>
+      <label className="field">
+        Label
+        <input value={c.label} onChange={(e) => onChange({ ...c, label: e.target.value })} />
+      </label>
+      <label className="field">
+        Source
+        <select aria-label="Source" value={c.sourceId} onChange={(e) => onChange({ ...c, sourceId: e.target.value })}>
+          <option value="">(choose a source)</option>
+          {liveSources.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.displayName}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        Worksheet
+        <input value={c.worksheet} onChange={(e) => onChange({ ...c, worksheet: e.target.value })} />
+      </label>
+      <label className="field">
+        Cell (single cell, e.g. B7)
+        <input value={c.cell} aria-invalid={!cellOk} aria-describedby="live-cell-help" onChange={(e) => onChange({ ...c, cell: e.target.value.trim().toUpperCase() })} />
+      </label>
+      <p id="live-cell-help" className={cellOk ? 'muted' : 'error'} role={cellOk ? undefined : 'alert'}>
+        {cellOk ? 'Assumes the host data starts at A1 (unverified, see the warning in the panel).' : 'Not a valid single cell. Ranges, rows, columns and sheet names are not accepted.'}
+      </p>
+      <label className="field">
+        Prefix
+        <input value={c.prefix} onChange={(e) => onChange({ ...c, prefix: e.target.value })} />
+      </label>
+      <label className="field">
+        Suffix
+        <input value={c.suffix} onChange={(e) => onChange({ ...c, suffix: e.target.value })} />
+      </label>
+      <label className="field">
+        Number format
+        <select aria-label="Number format" value={c.numberFormat} onChange={(e) => onChange({ ...c, numberFormat: e.target.value as LiveKpi['numberFormat'] })}>
+          <option value="auto">As in workbook</option>
+          <option value="integer">Integer</option>
+          <option value="decimal1">1 decimal</option>
+          <option value="decimal2">2 decimals</option>
+        </select>
+      </label>
+      <label className="field">
+        Empty-state text
+        <input value={c.emptyText} onChange={(e) => onChange({ ...c, emptyText: e.target.value })} />
+      </label>
+      <label className="field">
+        Error-state text (optional)
+        <input value={c.errorText} onChange={(e) => onChange({ ...c, errorText: e.target.value })} />
+      </label>
+      <label className="field">
+        <span>
+          <input type="checkbox" checked={c.showLoadedAt} onChange={(e) => onChange({ ...c, showLoadedAt: e.target.checked })} /> Show “Loaded from SharePoint at …”
+        </span>
+      </label>
+      <label className="field">
+        <span>
+          <input type="checkbox" checked={c.showRefresh} onChange={(e) => onChange({ ...c, showRefresh: e.target.checked })} /> Show Refresh button
+        </span>
+      </label>
+      <label className="field">
+        Warning at or above (optional)
+        <input value={c.warnAt ?? ''} onChange={(e) => onChange({ ...c, warnAt: numOrUndefined(e.target.value) })} />
+      </label>
+      <label className="field">
+        Critical at or above (optional)
+        <input value={c.criticalAt ?? ''} onChange={(e) => onChange({ ...c, criticalAt: numOrUndefined(e.target.value) })} />
+      </label>
+      <fieldset>
+        <legend>Snapshot fallback (optional)</legend>
+        <p className="muted">Shown only when live data is unavailable, always labelled “Snapshot fallback”. Never shown as live.</p>
+        <label className="field">
+          Fallback value
+          <input
+            value={c.fallback?.value ?? ''}
+            onChange={(e) => onChange({ ...c, fallback: e.target.value === '' ? undefined : { value: e.target.value, importedAt: c.fallback?.importedAt ?? new Date().toISOString() } })}
+          />
+        </label>
+        <button type="button" onClick={useWorkbookValue} disabled={!workbook}>
+          Use the imported workbook’s value
+        </button>
+      </fieldset>
+    </>
+  );
 }
 
 function describeBinding(b: Binding): string {
@@ -128,7 +238,7 @@ function BindingEditor({ component, workbook, pick, onChange }: { component: Ext
   );
 }
 
-export function Inspector({ component, workbook, pick, onChange }: Props) {
+export function Inspector({ component, workbook, pick, liveSources, onChange }: Props) {
   if (!component) {
     return (
       <section aria-labelledby="insp-h" className="panel">
@@ -198,6 +308,7 @@ export function Inspector({ component, workbook, pick, onChange }: Props) {
           </p>
         </>
       )}
+      {c.type === 'liveKpi' && <LiveKpiEditor key={c.id} c={c} workbook={workbook} liveSources={liveSources} onChange={onChange} />}
       {c.type === 'stamp' && (
         <p className="muted">Renders the export timestamp and Studio build identifier. Values are filled in at export time; the preview shows a placeholder.</p>
       )}

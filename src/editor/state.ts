@@ -3,7 +3,7 @@ import { newComponent, type Component, type ComponentType, type Project } from '
 export type Action =
   | { type: 'load'; project: Project }
   | { type: 'rename'; name: string }
-  | { type: 'page'; patch: Partial<Pick<Project['page'], 'title' | 'lang' | 'accent'>> }
+  | { type: 'page'; patch: Partial<Pick<Project['page'], 'title' | 'lang' | 'accent' | 'exportProfile' | 'liveSources'>> }
   | { type: 'add'; component: ComponentType }
   | { type: 'update'; component: Component }
   | { type: 'remove'; id: string }
