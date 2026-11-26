@@ -16,8 +16,11 @@ npm run dev
 
 The exported value is a **snapshot**; it does not update by itself. Live Excel is experimental and unavailable until Microsoft documents the binding contract.
 
+## Real-tenant validation
+Studio's export has **not** been verified in a SharePoint tenant. Use **Load “SharePoint Compatibility Baseline” template → Tenant Test Export** and follow [docs/testing/real-tenant-baseline.md](docs/testing/real-tenant-baseline.md). The CSP is reviewed in [docs/security/csp.md](docs/security/csp.md).
+
 ## Scripts
-`npm run typecheck` · `npm run lint` · `npm test` · `npm run build` · `npm run test:e2e` (set `PW_CHROMIUM_PATH` to use an existing Chromium) · `npm run fixtures`
+`npm run typecheck` · `npm run lint` · `npm test` · `npm run build` · `npm run test:e2e` (set `PW_CHROMIUM_PATH` to use an existing Chromium) · `npm run fixtures` · `npm run schemas` · `npm run validate-result -- <file>`
 
 ## Layout
 `src/core` pure logic (model, Excel, export, validation) · `src/editor` React UI · `tests`, `e2e` · `fixtures` synthetic data. The editor and exported page are separate runtimes: nothing under `src/editor` is ever included in an export.

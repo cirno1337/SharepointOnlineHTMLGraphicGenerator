@@ -34,12 +34,27 @@ export const BindingSchema = z.object({
 });
 export type Binding = z.infer<typeof BindingSchema>;
 
+/**
+ * Links are navigation only. Allowed: root-relative paths ("/sites/...") and https URLs.
+ * Rejected: javascript:, data:, protocol-relative (//host), backslashes, whitespace, other schemes.
+ */
+const HREF_RE = /^(?:\/(?![/\\])[^\s]*|https:\/\/[^\s/?#]+[^\s]*)$/;
+export const HrefSchema = z.string().max(2000).regex(HREF_RE, 'Use a root-relative path (/sites/...) or an https:// URL.');
+export function isSafeHref(href: string): boolean {
+  return HREF_RE.test(href) && href.length <= 2000;
+}
+export function linkKind(href: string): 'external' | 'same-site' {
+  return href.startsWith('https://') ? 'external' : 'same-site';
+}
+
 const base = { id: z.string().min(1).max(64) };
 
 export const ComponentSchema = z.discriminatedUnion('type', [
   z.object({ ...base, type: z.literal('heading'), text: text(300), level: z.union([z.literal(1), z.literal(2), z.literal(3)]) }),
   z.object({ ...base, type: z.literal('text'), text: text() }),
   z.object({ ...base, type: z.literal('callout'), tone: z.enum(['info', 'warning', 'success']), text: text() }),
+  z.object({ ...base, type: z.literal('link'), text: text(300), href: HrefSchema }),
+  z.object({ ...base, type: z.literal('stamp') }),
   z.object({
     ...base,
     type: z.literal('kpi'),
@@ -101,6 +116,10 @@ export function newComponent(type: ComponentType): Component {
       return { id, type, text: 'Write something here.' };
     case 'callout':
       return { id, type, tone: 'info', text: 'Important note.' };
+    case 'link':
+      return { id, type, text: 'Link text', href: '/sites/REPLACE-WITH-SITE/SitePages/REPLACE-WITH-PAGE.aspx' };
+    case 'stamp':
+      return { id, type };
     case 'kpi':
       return { id, type, label: 'Metric', value: '0', prefix: '', suffix: '' };
     case 'table':

@@ -7,6 +7,8 @@ const TYPES: { type: ComponentType; label: string }[] = [
   { type: 'callout', label: 'Callout' },
   { type: 'kpi', label: 'KPI' },
   { type: 'table', label: 'Table' },
+  { type: 'link', label: 'Link' },
+  { type: 'stamp', label: 'Export info' },
 ];
 
 export function summary(c: Component): string {
@@ -17,6 +19,10 @@ export function summary(c: Component): string {
       return c.text.slice(0, 40);
     case 'callout':
       return `${c.tone}: ${c.text.slice(0, 30)}`;
+    case 'link':
+      return `Link: ${c.text.slice(0, 30)}`;
+    case 'stamp':
+      return 'Export info (timestamp and build)';
     case 'kpi':
       return `KPI: ${c.label}${c.binding ? ' (bound)' : ''}`;
     case 'table':

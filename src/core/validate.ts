@@ -29,6 +29,9 @@ export function validateProject(project: Project): Issue[] {
       }
       lastLevel = c.level;
     }
+    if (c.type === 'link' && !c.text.trim()) {
+      issues.push({ severity: 'error', code: 'link-text', message: 'Link needs visible text.', componentId: c.id });
+    }
     if (c.type === 'kpi') {
       if (!c.label.trim()) issues.push({ severity: 'error', code: 'kpi-label', message: 'KPI needs a label.', componentId: c.id });
       if (c.binding && c.binding.snapshot.kind !== 'scalar') {
@@ -45,7 +48,9 @@ export function validateProject(project: Project): Issue[] {
   return issues;
 }
 
-const EXTERNAL_ATTR = /\b(?:src|href|action|poster|data|srcset)\s*=\s*["']?\s*(?:https?:)?\/\//i;
+// Resource-loading attributes only. <a href> is navigation, handled separately below.
+const EXTERNAL_ATTR = /\b(?:src|action|formaction|poster|data|srcset)\s*=\s*["']?\s*(?:https?:)?\/\//i;
+const RESOURCE_ATTR = /\s(?:src|srcset|action|formaction|poster|data)\s*=/gi;
 const FORBIDDEN_SCRIPT_APIS: [RegExp, string][] = [
   [/\bfetch\s*\(/, 'fetch()'],
   [/\bXMLHttpRequest\b/, 'XMLHttpRequest'],
@@ -77,6 +82,16 @@ export function validateHtml(html: string): Issue[] {
   if (/\son[a-z]+\s*=/i.test(stripTextNodesAndStyle(html))) add('error', 'inline-handler', 'Inline event handler attributes are not allowed.');
   if (/javascript:/i.test(stripTextNodesAndStyle(html))) add('error', 'javascript-url', 'javascript: URLs are not allowed.');
   if (EXTERNAL_ATTR.test(stripTextNodesAndStyle(html))) add('error', 'external-resource', 'External resources are not confirmed to load in SharePoint HTML Pages.');
+  for (const m of html.matchAll(/<a\b[^>]*>/gi)) {
+    const href = /\shref\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(m[0]);
+    const value = (href?.[1] ?? href?.[2] ?? '').replace(/&#39;/g, "'");
+    if (/^https:\/\//i.test(value)) {
+      add('warning', 'external-link', 'External link: the destination domain must be in the site\'s HTML Field Security allow list.');
+    } else if (/^\/\//.test(value) || /^[a-z][a-z0-9+.-]*:/i.test(value)) {
+      add('error', 'unsafe-link', `Link target "${value.slice(0, 40)}" is not a root-relative path or https URL.`);
+    }
+  }
+  if (/<base\b/i.test(html)) add('error', 'base-tag', '<base> elements are not allowed.');
   if (/<link\b/i.test(html)) add('error', 'link-tag', '<link> elements are not allowed.');
   if (/url\(\s*["']?\s*(?:https?:)?\/\//i.test(html) || /@import/i.test(html)) add('error', 'external-css', 'External CSS resources are not allowed.');
   if (/<iframe\b/i.test(html)) add('warning', 'iframe', 'Nested iframes are undocumented for HTML Pages.');
@@ -90,4 +105,32 @@ export function validateHtml(html: string): Issue[] {
 /** Remove text content between tags so that escaped user text can't trigger attribute heuristics. */
 function stripTextNodesAndStyle(html: string): string {
   return html.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/>[^<]*</g, '><');
+}
+
+export interface ExportScan {
+  scriptCount: number;
+  /** Elements/attributes that would load a resource: src, srcset, poster, data, action, <link>, url(), @import. */
+  resourceReferenceCount: number;
+  linkTagCount: number;
+  inlineHandlerCount: number;
+  sameSiteLinkCount: number;
+  externalLinkCount: number;
+}
+
+/** Count constructs that must be zero (or known) in a static export. Independent of the severity logic above. */
+export function scanExport(html: string): ExportScan {
+  const body = stripTextNodesAndStyle(html);
+  // CSS is scanned separately so that user *text* such as "url(" is never miscounted.
+  const css = (html.match(/<style[\s\S]*?<\/style>/gi) ?? []).join('\n');
+  const markup = `${body}\n${css}`;
+  const anchors = [...html.matchAll(/<a\b[^>]*>/gi)].map((m) => /\shref\s*=\s*"([^"]*)"/i.exec(m[0])?.[1] ?? '');
+  return {
+    scriptCount: (body.match(/<script\b/gi) ?? []).length,
+    resourceReferenceCount:
+      (body.match(RESOURCE_ATTR) ?? []).length + (markup.match(/url\(/gi) ?? []).length + (markup.match(/@import/gi) ?? []).length + (body.match(/<link\b/gi) ?? []).length,
+    linkTagCount: (body.match(/<link\b/gi) ?? []).length,
+    inlineHandlerCount: (body.match(/\son[a-z]+\s*=/gi) ?? []).length,
+    sameSiteLinkCount: anchors.filter((h) => h.startsWith('/')).length,
+    externalLinkCount: anchors.filter((h) => /^https:\/\//i.test(h)).length,
+  };
 }

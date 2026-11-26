@@ -1,6 +1,24 @@
-import type { Component, Project } from '../project';
+import { isSafeHref, type Component, type Project } from '../project';
+import { STUDIO_BUILD } from '../version';
 import { snapshotProvider } from '../providers';
 import { escapeHtml, formatCell } from './escape';
+
+/**
+ * Content-Security-Policy delivered via <meta http-equiv>. Every directive is justified in
+ * docs/security/csp.md. Changing this string is a security decision: update that document,
+ * DECISIONS.md and the pinned test in tests/tenant.test.ts together.
+ */
+export const EXPORT_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:";
+
+/** Values only known at export time. The editor preview renders without them. */
+export interface RenderContext {
+  exportedAt: string; // ISO 8601 UTC
+  studioBuild: string;
+}
+
+export function exportContext(now: Date = new Date()): RenderContext {
+  return { exportedAt: now.toISOString(), studioBuild: STUDIO_BUILD };
+}
 
 const CSS = `
 :root{--accent:__ACCENT__;--ink:#1b1b1b;--muted:#4a4a4a;--line:#c8c6c4;--surface:#f3f2f1}
@@ -23,6 +41,12 @@ table{border-collapse:collapse;width:100%;min-width:20rem}
 caption{text-align:left;font-weight:600;padding:.5rem 0}
 th,td{border:1px solid var(--line);padding:.5rem .75rem;text-align:left;vertical-align:top}
 thead th{background:var(--surface)}
+p,td,th,caption,.sphs-callout,.sphs-kpi__label,.sphs-kpi__value,.sphs-stamp dd,a{overflow-wrap:anywhere}
+.sphs-kpi__value{min-width:0}
+a{color:#0a4f8f}
+.sphs-stamp{margin:0;padding-top:1rem;border-top:1px solid var(--line);color:var(--muted);font-size:.85rem}
+.sphs-stamp div{display:flex;gap:.5rem;flex-wrap:wrap}
+.sphs-stamp dt{font-weight:600}.sphs-stamp dd{margin:0}
 `.trim();
 
 function kpiValue(c: Extract<Component, { type: 'kpi' }>): string {
@@ -41,7 +65,7 @@ function tableData(c: Extract<Component, { type: 'table' }>) {
   return { columns: c.columns, rows: c.rows };
 }
 
-function renderComponent(c: Component): string {
+function renderComponent(c: Component, ctx: RenderContext | undefined): string {
   switch (c.type) {
     case 'heading':
       return `<h${c.level}>${escapeHtml(c.text)}</h${c.level}>`;
@@ -49,6 +73,16 @@ function renderComponent(c: Component): string {
       return `<p>${escapeHtml(c.text)}</p>`;
     case 'callout':
       return `<aside class="sphs-callout sphs-callout--${c.tone}" role="note"><p>${escapeHtml(c.text)}</p></aside>`;
+    case 'link':
+      // Defense in depth: the schema already rejects unsafe hrefs; never emit one as a link.
+      return isSafeHref(c.href)
+        ? `<p><a href="${escapeHtml(c.href)}" rel="noopener noreferrer">${escapeHtml(c.text)}</a></p>`
+        : `<p>${escapeHtml(c.text)}</p>`;
+    case 'stamp': {
+      const when = ctx ? `<time datetime="${escapeHtml(ctx.exportedAt)}">${escapeHtml(ctx.exportedAt)}</time>` : '(set at export time)';
+      const build = ctx ? escapeHtml(ctx.studioBuild) : '(set at export time)';
+      return `<dl class="sphs-stamp"><div><dt>Exported:</dt><dd>${when}</dd></div><div><dt>Studio build:</dt><dd>${build}</dd></div></dl>`;
+    }
     case 'kpi':
       return `<div class="sphs-kpi"><span class="sphs-kpi__label">${escapeHtml(c.label)}</span><strong class="sphs-kpi__value">${escapeHtml(c.prefix + kpiValue(c) + c.suffix)}</strong></div>`;
     case 'table': {
@@ -67,17 +101,17 @@ function renderComponent(c: Component): string {
  * - zero scripts, zero network references, zero editor state
  * - all user and workbook text is HTML-escaped
  */
-export function renderPage(project: Project): string {
+export function renderPage(project: Project, ctx?: RenderContext): string {
   const { page } = project;
   const accent = /^#[0-9a-fA-F]{6}$/.test(page.accent) ? page.accent : '#0f6cbd';
   const lang = /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/.test(page.lang) ? page.lang : 'en';
-  const body = page.components.map(renderComponent).join('\n');
+  const body = page.components.map((c) => renderComponent(c, ctx)).join('\n');
   return `<!doctype html>
 <html lang="${escapeHtml(lang)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
+<meta http-equiv="Content-Security-Policy" content="${EXPORT_CSP}">
 <meta name="generator" content="SharePoint HTML Studio">
 <title>${escapeHtml(page.title)}</title>
 <style>

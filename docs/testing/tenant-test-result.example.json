@@ -1,0 +1,215 @@
+{
+  "schemaVersion": 1,
+  "variant": "baseline",
+  "testDate": "2000-01-01",
+  "studio": {
+    "version": "0.0.0-example",
+    "build": "0.0.0-example+0000000"
+  },
+  "browser": {
+    "name": "EXAMPLE-BROWSER",
+    "version": "0",
+    "os": "EXAMPLE-OS"
+  },
+  "tenant": {
+    "label": "EXAMPLE-NOT-A-REAL-TEST",
+    "releaseChannel": "EXAMPLE",
+    "htmlPagesEnabled": true,
+    "copilotLicensed": false
+  },
+  "html": {
+    "fileName": "SharePoint-Compatibility-Baseline.html",
+    "utf8Bytes": 24310,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "uploadPath": "/sites/[site]/SitePages/SharePoint-Compatibility-Baseline.html",
+    "retrievedSha256": null
+  },
+  "sanitizationConfirmed": true,
+  "cases": [
+    {
+      "id": "TC-01",
+      "title": "Pre-flight: size and hash",
+      "expected": "Tenant Test Export reports a UTF-8 size well under 10 MB and a 64-hex SHA-256; Studio shows no validation errors.",
+      "actual": "EXAMPLE: 24,310 bytes (0.2318% of limit); SHA-256 recorded.",
+      "status": "pass",
+      "observations": [],
+      "evidence": []
+    },
+    {
+      "id": "TC-02",
+      "title": "Upload to Site Pages",
+      "expected": "The .html file uploads through \"Upload HTML page\" into Site Pages without an error or a size/type rejection.",
+      "actual": "EXAMPLE: uploaded without error.",
+      "status": "pass",
+      "observations": [],
+      "evidence": []
+    },
+    {
+      "id": "TC-03",
+      "title": "Open as draft",
+      "expected": "The draft opens; styles are applied; all baseline sections are visible; no blank page and no \"unsupported content\" banner.",
+      "actual": "",
+      "status": "not-run",
+      "observations": [],
+      "evidence": []
+    },
+    {
+      "id": "TC-04",
+      "title": "Publish",
+      "expected": "Publishing succeeds and the page is reachable at its published URL.",
+      "actual": "",
+      "status": "not-run",
+      "observations": [],
+      "evidence": []
+    },
+    {
+      "id": "TC-05",
+      "title": "Reopen after publish",
+      "expected": "Closing and reopening the page (and opening it in a new tab) renders identically to the draft.",
+      "actual": "",
+      "status": "not-run",
+      "observations": [],
+      "evidence": []
+    },
+    {
+      "id": "TC-06",
+      "title": "Versioning",
+      "expected": "Version history lists the upload/publish versions; restoring or viewing a previous version renders correctly.",
+      "actual": "",
+      "status": "not-run",
+      "observations": [],
+      "evidence": []
+    },
+    {
+      "id": "TC-07",
+      "title": "Responsive behavior",
+      "expected": "At about 1280, 768 and 375 CSS px: no horizontal page scroll, table scrolls inside its own region, long text wraps, KPIs stay readable.",
+      "actual": "",
+      "status": "not-run",
+      "observations": [],
+      "evidence": []
+    },
+    {
+      "id": "TC-08",
+      "title": "Same-site link",
+      "expected": "The same-site link navigates to the target page (record whether in the frame, top window or a new tab).",
+      "actual": "",
+      "status": "not-run",
+      "observations": [],
+      "evidence": []
+    },
+    {
+      "id": "TC-09",
+      "title": "External link",
+      "expected": "Without allow-listing the domain SharePoint blocks or warns; after allow-listing it navigates. Record exact behavior.",
+      "actual": "EXAMPLE: clicking the external link showed a blocked-site message.",
+      "status": "fail",
+      "observations": [
+        "EXAMPLE: domain was not yet in the HTML Field Security allow list; repeat after allow-listing."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "TC-10",
+      "title": "HTML-lookalike workbook text",
+      "expected": "Every markup-like value displays as literal text; no image loads, no script runs, no formatting is applied.",
+      "actual": "",
+      "status": "not-run",
+      "observations": [],
+      "evidence": []
+    },
+    {
+      "id": "TC-11",
+      "title": "Special characters and encoding",
+      "expected": "Accents, CJK, RTL, emoji and typographic punctuation display exactly as authored; no mojibake.",
+      "actual": "",
+      "status": "not-run",
+      "observations": [],
+      "evidence": []
+    },
+    {
+      "id": "TC-12",
+      "title": "SharePoint sanitization/transformation",
+      "expected": "Retrieved or inspected markup equals the uploaded markup, or every difference is recorded as a transformation.",
+      "actual": "",
+      "status": "not-run",
+      "observations": [],
+      "evidence": []
+    },
+    {
+      "id": "TC-13",
+      "title": "Iframe inspection",
+      "expected": "The page renders in an iframe; record its sandbox tokens, src/srcdoc form and allow attributes.",
+      "actual": "",
+      "status": "not-run",
+      "observations": [],
+      "evidence": []
+    },
+    {
+      "id": "TC-14",
+      "title": "CSP inspection",
+      "expected": "Record whether the meta CSP is present in the rendered document, the effective Content-Security-Policy header, and any violation messages.",
+      "actual": "",
+      "status": "not-run",
+      "observations": [],
+      "evidence": []
+    },
+    {
+      "id": "TC-15",
+      "title": "Console errors",
+      "expected": "No console errors originate from the page content. Platform-originated messages are recorded separately.",
+      "actual": "",
+      "status": "not-run",
+      "observations": [],
+      "evidence": []
+    },
+    {
+      "id": "TC-16",
+      "title": "Copilot edit of one text element",
+      "expected": "Copilot changes the targeted paragraph only; KPIs, table, callout and links remain intact; every other change is recorded.",
+      "actual": "EXAMPLE: no Copilot license on the test account.",
+      "status": "blocked",
+      "observations": [
+        "EXAMPLE: Copilot pane unavailable."
+      ],
+      "evidence": []
+    },
+    {
+      "id": "TC-17",
+      "title": "Retrieved content comparison",
+      "expected": "A file retrieved from SharePoint has the same SHA-256 as the upload, or the differences are recorded.",
+      "actual": "",
+      "status": "not-run",
+      "observations": [],
+      "evidence": []
+    },
+    {
+      "id": "TC-18",
+      "title": "Keyboard and zoom smoke test",
+      "expected": "Links and the table scroll region are reachable by keyboard with a visible focus ring; 200% zoom keeps content usable.",
+      "actual": "",
+      "status": "not-run",
+      "observations": [],
+      "evidence": []
+    },
+    {
+      "id": "TC-19",
+      "title": "Direct canvas edit of one text element",
+      "expected": "In SharePoint edit mode the paragraph can be selected, edited and saved; the rest of the page is unchanged; no CSP violations appear in the console.",
+      "actual": "",
+      "status": "not-run",
+      "observations": [],
+      "evidence": []
+    }
+  ],
+  "transformations": [
+    {
+      "id": "T-01",
+      "area": "csp",
+      "description": "EXAMPLE: the meta Content-Security-Policy element was absent from the rendered DOM.",
+      "before": "<meta http-equiv=\"Content-Security-Policy\" ...>",
+      "after": "(removed)"
+    }
+  ],
+  "summary": "EXAMPLE ONLY. This file illustrates the format; it is not the outcome of any real test."
+}

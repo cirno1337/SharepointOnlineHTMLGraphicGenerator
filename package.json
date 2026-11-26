@@ -1,6 +1,6 @@
 {
   "name": "sharepoint-html-studio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -13,7 +13,9 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test --trace off",
-    "fixtures": "tsx scripts/make-fixtures.ts"
+    "fixtures": "tsx scripts/make-fixtures.ts",
+    "schemas": "tsx scripts/make-schemas.ts",
+    "validate-result": "tsx scripts/validate-result.ts"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

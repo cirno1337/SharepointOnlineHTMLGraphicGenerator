@@ -9,7 +9,4 @@ export function downloadText(fileName: string, mime: string, content: string): v
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-export function safeFileName(name: string, ext: string): string {
-  const base = name.replace(/[^a-zA-Z0-9-_ ]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'page';
-  return `${base}.${ext}`;
-}
+export { safeFileName } from '../core/export/fileName';

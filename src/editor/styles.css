@@ -35,3 +35,7 @@ fieldset{border:1px solid var(--line);border-radius:4px;margin:.75rem 0 0}
 .badge{display:inline-block;padding:0 .4rem;border-radius:3px;font-size:.7rem;font-weight:700;color:#fff}
 .badge-confirmed{background:#0b6a0b}.badge-experimental{background:#8a5a00}.badge-unsupported{background:#a4262c}.badge-unknown{background:#605e5c}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.facts{margin:.75rem 0;display:grid;gap:.4rem}
+.facts div{display:grid;grid-template-columns:9rem 1fr;gap:.5rem}
+.facts dt{font-weight:600}.facts dd{margin:0;overflow-wrap:anywhere}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:.8rem}

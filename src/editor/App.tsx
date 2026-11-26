@@ -1,8 +1,9 @@
 import { useMemo, useReducer, useState } from 'react';
 import { applyRefresh, planRefresh, type RefreshPlan } from '../core/excel/refresh';
 import type { WorkbookData } from '../core/excel/types';
-import { renderPage } from '../core/export/render';
+import { exportContext, renderPage } from '../core/export/render';
 import { emptyProject, parseProject, type Component } from '../core/project';
+import { BASELINE_TEMPLATE_NAME, buildBaselineProject } from '../core/templates/baseline';
 import { validateHtml, validateProject } from '../core/validate';
 import { downloadText, safeFileName } from './download';
 import { Inspector } from './Inspector';
@@ -10,6 +11,7 @@ import { Outline } from './Outline';
 import { CapabilitiesPanel, RefreshPanel, ValidationPanel } from './Panels';
 import { Preview } from './Preview';
 import { reducer } from './state';
+import { TenantExportPanel } from './TenantExportPanel';
 import { WorkbookPanel, type Pick } from './WorkbookPanel';
 
 export function App() {
@@ -28,8 +30,16 @@ export function App() {
 
   function exportHtml() {
     if (hasErrors) return;
-    downloadText(safeFileName(project.page.title, 'html'), 'text/html', html);
+    downloadText(safeFileName(project.page.title, 'html'), 'text/html;charset=utf-8', renderPage(project, exportContext()));
     setMessage({ kind: 'ok', text: 'Exported. Upload the file to a Site Pages library using "Upload HTML page".' });
+  }
+
+  function loadBaseline() {
+    if (!window.confirm(`Replace the current project with the "${BASELINE_TEMPLATE_NAME}" template? Unsaved changes will be lost.`)) return;
+    const p = buildBaselineProject();
+    dispatch({ type: 'load', project: p });
+    setSelectedId(p.page.components[0]?.id ?? null);
+    setMessage({ kind: 'ok', text: `Loaded template "${BASELINE_TEMPLATE_NAME}". Edit the same-site link target before a tenant test.` });
   }
 
   async function openProject(file: File | undefined) {
@@ -72,6 +82,9 @@ export function App() {
           Open project
           <input type="file" accept="application/json,.json" data-testid="open-project" onChange={(e) => void openProject(e.target.files?.[0])} />
         </label>
+        <button type="button" onClick={loadBaseline}>
+          Load “{BASELINE_TEMPLATE_NAME}” template
+        </button>
         <button type="button" className="primary" onClick={exportHtml} disabled={hasErrors} aria-describedby="export-hint">
           Export HTML
         </button>
@@ -112,6 +125,7 @@ export function App() {
               }}
             />
           )}
+          <TenantExportPanel project={project} hasErrors={hasErrors} />
           <Inspector component={selected} workbook={workbook} pick={pick} onChange={update} />
           <ValidationPanel issues={issues} />
           <CapabilitiesPanel />

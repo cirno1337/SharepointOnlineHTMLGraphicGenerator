@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { normalizeAddress } from '../core/excel/address';
 import { makeBinding } from '../core/excel/resolve';
 import type { WorkbookData } from '../core/excel/types';
-import type { Binding, Component, Selection } from '../core/project';
+import { isSafeHref, linkKind, type Binding, type Component, type Selection } from '../core/project';
 import type { Pick } from './WorkbookPanel';
 
 interface Props {
@@ -178,6 +178,28 @@ export function Inspector({ component, workbook, pick, onChange }: Props) {
             <textarea rows={3} value={c.text} onChange={(e) => onChange({ ...c, text: e.target.value })} />
           </label>
         </>
+      )}
+      {c.type === 'link' && (
+        <>
+          <label className="field">
+            Link text
+            <input value={c.text} onChange={(e) => onChange({ ...c, text: e.target.value })} />
+          </label>
+          <label className="field">
+            Target (root-relative path like /sites/… or an https:// URL)
+            <input value={c.href} aria-invalid={!isSafeHref(c.href)} aria-describedby="href-help" onChange={(e) => onChange({ ...c, href: e.target.value })} />
+          </label>
+          <p id="href-help" className={isSafeHref(c.href) ? 'muted' : 'error'} role={isSafeHref(c.href) ? undefined : 'alert'}>
+            {isSafeHref(c.href)
+              ? linkKind(c.href) === 'external'
+                ? 'External link. The destination domain must be in the site’s HTML Field Security allow list.'
+                : 'Same-site link. Replace any REPLACE-WITH-… placeholder with a real path before a tenant test.'
+              : 'Not a valid target. Only root-relative paths and https:// URLs are exported; the link will render as plain text.'}
+          </p>
+        </>
+      )}
+      {c.type === 'stamp' && (
+        <p className="muted">Renders the export timestamp and Studio build identifier. Values are filled in at export time; the preview shows a placeholder.</p>
       )}
       {c.type === 'kpi' && (
         <>
