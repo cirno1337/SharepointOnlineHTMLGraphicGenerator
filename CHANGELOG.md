@@ -46,3 +46,6 @@
 
 ### 0.3.0 addendum: LD-10 (2026-11-27)
 - Docs only: Studio's label-adjacent export validated in one tenant (view mode, stored-file comparison, Edit mode). No code change.
+
+### 0.3.0 addendum: LD-07 (2026-11-27)
+- Docs only: permission isolation validated in one tenant with a non-admin TEST_VIEWER (page yes/workbook no gave `access-denied` and labelled fallbacks; adding workbook Read gave live 23 and 46). Restoration recorded as partially restored (SharePoint-managed residue, no content access).

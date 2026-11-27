@@ -6,7 +6,7 @@
 >
 > This is **not** a public API, **not** a supported SDK, **not** a stable contract and **not** a Microsoft guarantee. Studio treats it as experimental and feature-flagged (`VITE_EXPERIMENTAL_EXCEL_LIVE=true`; decision D-014).
 >
-> **Release blocker:** Permission isolation has not yet been validated with a viewer who can access the page but not the workbook. LiveData is not approved for limited pilot until LD-07 passes.
+> **Release gate (updated 2026-11-27):** LD-07 passed once for one non-admin TEST_VIEWER in one tenant (see section 23 and the experiment ledger): a viewer with page access but no workbook access received no workbook data. This is `TENANT_OBSERVED_ONCE` and not Microsoft-documented. LiveData remains experimental and is not production ready.
 
 Evidence classes used below: `MICROSOFT_DOCUMENTED`, `TENANT_OBSERVED_REPRODUCED` (more than once), `TENANT_OBSERVED_ONCE`, `HYPOTHESIS`, `FAILED_IN_CURRENT_TEST`, `UNKNOWN`. Experiment records are in [livedata-experiments.md](livedata-experiments.md). All values in examples are synthetic.
 
@@ -152,3 +152,11 @@ A Studio Interactive Safe export (manifest with only `spItemUrl` and `fileName`,
 - Refresh makes the host re-run the page (new "Loaded from SharePoint at" time) and keeps working KPIs; the frame is rebuilt, so the temporary disabled state is not visible afterwards;
 - in Edit mode the page shows SharePoint's "Live data isn't available while editing" banner and Studio's labelled fallbacks with the editor message; leaving Edit restores live values and the stored file is unchanged.
 It does **not** establish viewer isolation (LD-07), refreshed-value latency, leading-blank-column handling (LD-11), behavior in other tenants, or that this will continue to work.
+
+## 23. Permission isolation (LD-07, 2026-11-27, `TENANT_OBSERVED_ONCE`)
+
+For one non-admin TEST_VIEWER account in one tenant, the host's LiveData prefetch followed the **viewer's own access to the workbook**, not the page author's and not the viewer's access to the page:
+- page readable, workbook not readable: the host returned an error with code `access-denied`; Studio showed the labelled Snapshot fallback; the live values never appeared;
+- after the same account was given Read on the workbook alone: the same page showed the live values without a change to the page, the manifest or any sharing link, and no propagation delay was observed (checked about 23 to 30 seconds after the grant).
+Observed side effects of giving the account item-level access: SharePoint's page viewer failed to load once on the first visit (`SpfxLoad`), a SharePoint banner "Something went wrong. We couldn't display this content." appeared while the host reported `access-denied`, the account was added to the site user list and received Limited Access entries on the library and site. Restoration returned the workbook exactly to its baseline and the page to inherited permissions plus one SharePoint-managed Limited Access entry.
+The raw host result (`content`, `error`, `errorCode` fields) was not read; only the rendered behavior was observed. Not established: other tenants, other link types (for example a viewer who has opened the organization link), external or guest users, Microsoft 365 group members versus direct grants, sensitivity-label effects, caching after revocation, or that this will continue to hold.

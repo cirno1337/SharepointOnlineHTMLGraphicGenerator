@@ -2,7 +2,7 @@
 
 Date: 2026-11-26. Scope: the local implementation of experimental SharePoint Live Excel (observed contract revision `observed-2026-11-r1`). Method: a separate adversarial pass after the first implementation, reading the code as an attacker and as a user, probing with failing tests, then fixing. No tenant operations were performed in this phase.
 
-**Recommendation: continue the experiment. Readiness: `READY_FOR_CONTROLLED_TENANT_TEST`.** Not ready for a limited pilot until LD-07 passes. Studio's own runtime has never run in a tenant.
+**Recommendation: continue the experiment. Readiness: `READY_FOR_LIMITED_PILOT` (controlled, labelled, one tenant; updated after LD-07 on 2026-11-27).** Earlier text in this file about READY_FOR_CONTROLLED_TENANT_TEST is historical. Studio runtime ran in the tenant in LD-10 and permission isolation passed in LD-07, both one-tenant observations.
 
 ## Findings and corrections
 
@@ -34,7 +34,7 @@ Severity: BLOCKER, HIGH, MEDIUM, LOW. "Fixed" means corrected in this milestone 
 
 | ID | Sev | Risk | Needed |
 |---|---|---|---|
-| U1 | BLOCKER for pilot | Viewer isolation unknown: a user who can open the page but not the workbook might see data. | LD-07 with approved test users. If data appears: SECURITY BLOCKER. |
+| U1 | RESOLVED for one tenant | Viewer isolation: LD-07 PASS (`TENANT_OBSERVED_ONCE`): without workbook access the host returned `access-denied` and no live value appeared; with workbook access live values appeared. | Repeat in other tenants and for other link types before relying on it broadly. |
 | U2 | RESOLVED BY DISABLING | LD-09 (2026-11-27) disproved the A1 assumption: leading blank rows are dropped and metadata has no coordinates. | Arbitrary A1 addressing disabled (D-020). Live KPI export is blocked until a verified selector exists. |
 | U3 | LOW (observed OK) | The runtime assumes `__LD_RESULTS__` exists when the page runs. LD-10: it did in the tenant (view mode); in Edit mode it is absent and the editor state is shown. | none |
 | U4 | LOW (observed OK) | A different CSP in another tenant could block the inline script. LD-10: the policy survived upload and the runtime ran. | Other tenants untested. |
@@ -72,3 +72,6 @@ Unresolved: S3 (leading blank columns), the permission gate LD-07 (still require
 
 ## LD-10 outcome (2026-11-27)
 Studio's own export ran in the tenant and the label-adjacent selector returned 23 and 46 from the observed trimmed grid; failure cases were isolated and labelled; SharePoint preserved the manifest, runtime, CSP and selector attributes. Items U3 to U5 are downgraded to LOW (observed OK, one tenant). Still open: U1 viewer isolation (LD-07, required before any pilot), U6 refresh latency, S3 leading blank columns (LD-11), other tenants. No code change was needed. Readiness stays `READY_FOR_CONTROLLED_TENANT_TEST`; it cannot reach `READY_FOR_LIMITED_PILOT` until LD-07 passes.
+
+## LD-07 outcome (2026-11-27)
+Permission isolation was tested with a separately authenticated non-admin TEST_VIEWER. Case C (page yes, workbook no): `access-denied` host result, labelled Snapshot fallbacks, 23 and 46 never shown. Case B (same user, Read on the workbook added): 23 and 46 live, failing KPIs still isolated. Restoration: workbook identical to baseline; page back to inherited permissions plus one SharePoint-managed Limited Access entry for TEST_VIEWER and a site user list entry (`PARTIALLY_RESTORED`, no content access); both items denied again. **LD-07 PASS, `TENANT_OBSERVED_ONCE`.** The no-pilot gate in the threat model is satisfied for one tenant; remaining conditions for a limited pilot are in `IMPLEMENTATION_STATUS.md`. Not covered: other tenants, guests, the organization link redeemed by a viewer, labels, raw host payload fields, revocation caching.

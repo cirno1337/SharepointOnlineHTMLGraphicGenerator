@@ -113,7 +113,7 @@ The Copilot-generated page's `render()` read the KPI as `headers[1]` of the firs
 No second already-authorized synthetic workbook exists and creating one would need a sharing link. Not run. Local coverage only: manifest deduplication, distinct sources, invalid source skipped, and per-KPI isolation are unit-tested against Studio's runtime.
 
 ### LD-07 permission behavior: `BLOCKED_REQUIRES_APPROVAL` (required security gate)
-Not run. Protocol in `docs/testing/livedata-controlled-tenant-test.md`. LiveData is not approved for limited pilot until it passes.
+Run 2026-11-27: PASS. See the LD-07 section below.
 
 ### LD-08 failure states: local fixtures, done
 Covered by unit tests against the exact exported runtime run in an isolated VM, and by e2e in a real browser: missing `__LD_RESULTS__`, missing key, `error`/`errorCode`, empty content, unsupported format, malformed envelope, missing worksheet, missing cell, bad address, empty cell, duplicate sheet names (first wins), Unicode sheet names, quoted commas/quotes/newlines, CRLF/LF/CR, BOM, formula-, markup- and script-looking values, oversized input (content, sheets, rows, columns, cell length). No tenant action was needed. Class: not a tenant observation; behavior of Studio's own code.
@@ -195,3 +195,45 @@ Edit mode (opened once, left with "Discard edits", Copilot not used): SharePoint
 Unexpected network behavior: none observable from the page. Studio's runtime contains no network code (tests), and SharePoint's own prefetch is host-side.
 
 Classification: **Studio label-adjacent runtime in SharePoint: `TENANT_OBSERVED_ONCE`.** Not Microsoft-documented, one tenant, author's account only. Not established: viewer isolation (LD-07), refreshed values after a workbook change (LD-05 follow-up), leading blank columns (LD-11), other tenants.
+
+## LD-07 permission isolation: RUN 2026-11-27, PASS (`TENANT_OBSERVED_ONCE`)
+
+Aliases: **AUTHOR** (site collection administrator, the account that uploaded the pages) and **TEST_VIEWER** (an ordinary non-admin internal account, used sequentially in a separately authenticated Edge profile). No account name, address, user ID, host name, item or drive identifier or sharing URL is recorded here. Page under test: `sphs-lab-studio-label-adjacent.html` (the LD-10 page; four Live KPIs: `Open issues` expecting 23, `Doubled` expecting 46, a missing label, and an offset of 5). Workbook: the synthetic workbook the page's manifest points to. The existing organization-scoped view-only sharing link on the workbook was neither changed nor used (the Studio page's manifest does not carry it).
+
+### Baseline (read-only discovery before any change)
+- TEST_VIEWER: not a site collection administrator; in no SharePoint group (every site group's members were checked); not in the site user list; no direct permission on the page or workbook; effective view permission on the site's content, the page and the workbook: none. Membership of the associated Microsoft 365 group cannot be enumerated through REST (HTTP 500), so it was confirmed by behavior.
+- Page: inherits the Site Pages library permissions (15 assignments, no unique permissions). Workbook: unique permissions (10 assignments, including the organization-scoped link group with no members).
+- AUTHOR could not serve as a viewer (site collection administrator).
+
+### Pre-grant behavior as TEST_VIEWER (identity confirmed first)
+Page: **Access Denied** page. Workbook: **Access Denied** page and HTTP 403 from the file API. This also showed that TEST_VIEWER does not have the workbook through the Microsoft 365 group or through the sharing link.
+
+### Case C: page YES, workbook NO
+Change made (by AUTHOR): TEST_VIEWER was added to the site user list (SharePoint side effect), inheritance on the page item was broken with the existing assignments copied, and **Read** was granted to TEST_VIEWER on that single page. Nothing else changed (workbook assignments identical to baseline). Verified by behavior as TEST_VIEWER: workbook still **denied** (Access Denied page and 403); page **opens**.
+- First page load: SharePoint's page viewer failed once with "Can't load the application on this page" (`SpfxLoad`), which looks like a first-visit effect and is not an access denial.
+- Second load: the page rendered under SharePoint's own banner "Something went wrong. We couldn't display this content." All four KPIs showed the labelled **Snapshot fallback** `0`, "Snapshot taken 2026-11-27", the message "Workbook data could not be loaded from SharePoint." and the diagnostic `host-error (access-denied); source 1 ref-...`. **`23` and `46` were never shown as live data.**
+- Whether `content` was present in the host result was not read directly (that would have needed the probe page, a new tenant operation). The host reported an `access-denied` error, Studio showed only that and the fallbacks, and no workbook value appeared.
+
+### Case B: page YES, workbook YES (same TEST_VIEWER)
+Change made (by AUTHOR) at about 10:40:22 UTC: **Read** for TEST_VIEWER directly on the workbook only (one added assignment; no group, link, page or site change; the workbook already had unique permissions so no inheritance change). Case B baseline captured first (workbook assignments identical to the original baseline; TEST_VIEWER denied; the Case C page permission still present).
+- Workbook as TEST_VIEWER at about 10:40:45 UTC (about 23 seconds later): **opens** (API 200; Excel for the web in view-only mode). It was not edited.
+- Page, fresh load at about 10:40:52 UTC: **`Open issues` = `23` and `Doubled` = `46`, both live**, "Loaded from SharePoint at ...", the freshness hint visible, no fallback badge, no SharePoint error banner. The missing-label KPI showed `label-not-found` with its labelled fallback and the offset-5 KPI showed `adjacent-value-missing` with its labelled fallback (isolated, as in LD-10).
+- Propagation: no delay was observed; the first checks after the grant (about 23 seconds for the workbook, about 30 seconds for the page) already succeeded. This is a single observation, not a service level.
+
+### Same-user transition (the key evidence)
+```
+CASE C   page YES   workbook NO    host access-denied   23 NO    46 NO    (labelled fallbacks)
+              |  grant TEST_VIEWER Read on the workbook only
+              v
+CASE B   page YES   workbook YES   host delivered data  23 LIVE  46 LIVE  (no fallback on A and B)
+```
+Page access alone did not expose workbook data; adding workbook access alone made the same page work. The host evaluates the viewer's own access to the workbook.
+
+### Restoration
+Actions by AUTHOR: removed TEST_VIEWER's direct Read from the workbook; removed TEST_VIEWER's direct Read from the page; reset the page to inherit from Site Pages. Nothing else was touched; Limited Access entries and the site user list entry were not edited by hand.
+- **Workbook:** identical to the original baseline (same 10 assignments). `RESTORED`.
+- **Page:** all 15 original assignments are back; there is one additional entry, TEST_VIEWER with **Limited Access** (inherited from the library and site, which SharePoint added when TEST_VIEWER was first given item access). Limited Access gives no content access. TEST_VIEWER also remains in the site user list. Classification: **`PARTIALLY_RESTORED`** (residue is SharePoint-managed and grants no read access).
+- Post-restoration as TEST_VIEWER: page **denied** (Access Denied page), workbook **denied** (Access Denied page and 403). Effective view permission on both: none.
+
+### Conclusion and classification
+Case C: page YES, workbook NO, no live data. Case B: page YES, workbook YES, live data. **LD-07 PASS. Permission isolation: `TENANT_OBSERVED_ONCE`.** Scope: one tenant, one TEST_VIEWER, one workbook, one browser environment, one organization-scoped link configuration that was not used by the Studio page, undocumented LiveData behavior. Not Microsoft-documented permission behavior.
