@@ -142,3 +142,13 @@ Semantics (implemented once, in the exported runtime; the editor preview runs th
 6. The returned text is never altered, interpreted as HTML, a formula or a URL; number formatting applies only after selection.
 
 **Unobserved and therefore untrusted:** whether leading blank *columns* are trimmed (so "Column 1" may not be Excel column A), interior blank rows, merged cells, hidden rows, tables, formatted numbers and dates, large sheets. Authors must not treat `matchColumn` as an Excel column letter.
+
+## 22. Studio's own runtime in the tenant (LD-10, 2026-11-27, `TENANT_OBSERVED_ONCE`)
+
+A Studio Interactive Safe export (manifest with only `spItemUrl` and `fileName`, the exact Interactive Safe CSP, Studio's inline runtime, four `label-adjacent` KPIs) uploaded as a new page behaved as designed in view mode: `Open issues` gave `23`, `Doubled` gave `46`, a nonexistent label and an offset beyond the row gave labelled snapshot fallbacks with `label-not-found` and `adjacent-value-missing`, and the failures did not affect the other KPIs. This confirms for one tenant and the author's account:
+- the host prefetches for a Studio-generated manifest (not only for the Copilot-generated page);
+- `script-src 'unsafe-inline'` keeps the inline runtime working after upload; SharePoint kept the CSP meta unchanged;
+- SharePoint rewrites the stored file only by adding `xmlns:mso` and `xmlns:msdt` on `<html>` and an `mso` ContentTypeId comment block (+346 bytes); the manifest, the runtime, the CSP, the selector attributes and the label attributes are byte-identical;
+- Refresh makes the host re-run the page (new "Loaded from SharePoint at" time) and keeps working KPIs; the frame is rebuilt, so the temporary disabled state is not visible afterwards;
+- in Edit mode the page shows SharePoint's "Live data isn't available while editing" banner and Studio's labelled fallbacks with the editor message; leaving Edit restores live values and the stored file is unchanged.
+It does **not** establish viewer isolation (LD-07), refreshed-value latency, leading-blank-column handling (LD-11), behavior in other tenants, or that this will continue to work.

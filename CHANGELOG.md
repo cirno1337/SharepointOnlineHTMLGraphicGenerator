@@ -43,3 +43,6 @@
 - Added: experimental `label-adjacent` Live KPI selector (row label + adjacent value) over the observed trimmed grid; runtime error codes `label-not-found`, `ambiguous-label`, `adjacent-value-missing`, `adjacent-value-empty` and configuration codes; editor fields (worksheet, row label, label column, value offset, case-sensitive, trim, allow empty); mock scenarios for duplicate label, missing label and missing value; report section `liveData.selectors` (label length only).
 - Changed: Live KPIs no longer have a `cell`; old projects load as `deprecated-cell` (warning, export blocked, never converted). Interactive Safe export is available again for valid selectors.
 - Removed: the positional runtime functions (`readCell`, `parseCell`) and `parseLiveCellAddress`.
+
+### 0.3.0 addendum: LD-10 (2026-11-27)
+- Docs only: Studio's label-adjacent export validated in one tenant (view mode, stored-file comparison, Edit mode). No code change.

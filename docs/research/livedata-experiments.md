@@ -161,3 +161,37 @@ LD-09: one read-only REST list of the Site Pages file names (to confirm the prob
 
 ## Implementation after LD-09: label-adjacent selector (2026-11-27, local only; no tenant operations)
 Positional selection stays disabled (D-020). A semantic selector, `label-adjacent`, was designed and implemented over the trimmed grid exactly as LD-09 delivered it (D-021). Class: a design DERIVED from one `TENANT_OBSERVED_ONCE` observation; not Microsoft-documented; not guaranteed SharePoint behavior; not Excel-coordinate equivalent. Verified only locally: unit tests run the exact exported runtime against the observed payload (`Open issues` gives `23`, `Doubled` gives `46`), a real browser runs exported pages, and the Playwright flow configures the selector through the UI. **Not yet run in a tenant.** The tenant outcome is still `UNKNOWN`; LD-10 (in the controlled test protocol) is the next controlled test.
+
+## LD-10 Studio label-adjacent export in the tenant: RUN 2026-11-27 (`TENANT_OBSERVED_ONCE`, SUCCESS)
+
+Authorized scope: generate one Interactive Safe export, upload it as a NEW page, view it, read the stored file, open Edit mode once. No workbook, sharing or permission change; no Copilot use; nothing deleted, renamed or overwritten. The workbook item URL was injected inside the browser and never written to disk or Git.
+
+Export (Studio build `0.3.0+ld10`, commit `e16156b`): four Live KPIs on source `Summary`, each with a snapshot fallback of `0` dated 2026-11-27.
+| KPI | selector | expected |
+|---|---|---|
+| A | label `Open issues`, column 1, offset 1 | live `23` |
+| B | label `Doubled`, column 1, offset 1 | live `46` |
+| C | label `Synthetic missing label zz9` | `label-not-found`, labelled fallback |
+| D | label `Open issues`, offset 5 | `adjacent-value-missing`, labelled fallback |
+
+Pre-upload checks (all passed): Studio validation 0 errors (warnings: experimental, permissions, selector semantics, case-insensitive x4, item URL sensitive); HTML validator 0 errors; 27,899 UTF-8 bytes with the placeholder URL (SHA-256 `e766f049 af2c65e0 256bd76a 5928f197 76cbcaa7 ec1dce00 b53d8b92 cf2a3c0d`) and 27,966 bytes after the real URL was substituted (SHA-256 `3ef10d81 1a4c3a55 f0875013 d4926e57 424d3831 e0a580fc 16feb320 7e7f3416`); manifest 1 source with only `spItemUrl` and `fileName`; no `ms-sp-authoring-source`, `cslViewLink`, `filePath` or `label` manifest field; no fetch/XHR/WebSocket/EventSource/sendBeacon/storage/cookie use; 2 scripts (the JSON manifest and exactly one executable script equal to Studio's runtime byte for byte); CSP equals the Interactive Safe policy; no token-like strings; 4 KPI sections.
+
+Upload: the name `sphs-lab-studio-label-adjacent.html` was free (checked twice, immediately before attaching); SharePoint accepted the file as a new page (Upload HTML page).
+
+View mode results (author's own account, one browser):
+1. SharePoint accepted the file: **yes**. 2. Studio runtime executed: **yes** (the page changed from its static state). 3. Manifest triggered host prefetch: **yes**.
+4. A `Open issues`: **`23`**, "Loaded from SharePoint at 11:04:31 AM", no badge. 5. B `Doubled`: **`46`**, same timestamp.
+6. C: **`0` with the badge "Snapshot fallback"**, "Snapshot taken 2026-11-27", message "No row matched the label 'Synthetic missing label zz9'.", diagnostic `label-not-found; source 1 ref-8be5f34a` (a masked reference, no URL). 7. D: **`0` with "Snapshot fallback"**, message "The matching row does not contain a value in the configured adjacent column.", diagnostic `adjacent-value-missing; source 1 ref-8be5f34a`.
+8. Failed KPIs did not affect A and B (isolation held). 9. The timestamp is shown only for live values; fallbacks never show it. 10. Freshness hint "Recent workbook changes may take time to appear." visible under every KPI.
+11. Fallback always labelled when used: yes. 12. Workbook strings rendered as text: yes (only plain text and numbers were involved). 13. No horizontal overflow or layout damage seen at the tested width.
+14. Refresh (clicked on KPI B): the host re-ran the page; new timestamp `11:04:55 AM`, A and B still `23` and `46`, C and D unchanged. The frame is rebuilt by the host after a refresh, so the temporary disabled state and the status announcement could not be observed in this test (they are covered by local tests). Workbook not changed, so no freshness claim is made.
+
+Stored file comparison (read-only fetch; response header `X-Frame-Options: SAMEORIGIN`, a CSP header present): original 27,966 bytes versus stored 28,312 bytes (+346), SHA-256 of the stored file `f2f44f3c ec354b0f 5ac1405b 10e7620d e7684538 e9471ab4 b7be13f4 d05d8a89`. Different hashes, **semantically preserved**: the only differences are SharePoint's `xmlns:mso` and `xmlns:msdt` attributes on `<html>` and an `mso` ContentTypeId comment block. Manifest identical (only `spItemUrl` and `fileName`); the single executable script (Studio runtime) byte-identical; CSP meta identical (`default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:`); all four `data-sphs-label` values and every selector attribute identical; 4 KPI sections. The stored file was identical after the Edit-mode visit (same size and hash).
+
+CSP: the policy survived the upload unchanged and did not block Studio's inline runtime. No CSP error was observable (the page frame's console is not reachable from the host page and console capture started after load); the runtime running is the evidence. The page frame is a `blob:` frame with `sandbox="allow-scripts"` and no `allow` attribute (as in earlier observations).
+
+Edit mode (opened once, left with "Discard edits", Copilot not used): SharePoint showed "Live data isn't available while editing, so some content may not appear."; every KPI showed the labelled **Snapshot fallback** `0` with the Studio message "Live data is unavailable in the SharePoint editor. Publish or preview the page to load current data." and diagnostic `no-prefetch`. Leaving Edit restored live values (23 and 46). The stored file did not change.
+
+Unexpected network behavior: none observable from the page. Studio's runtime contains no network code (tests), and SharePoint's own prefetch is host-side.
+
+Classification: **Studio label-adjacent runtime in SharePoint: `TENANT_OBSERVED_ONCE`.** Not Microsoft-documented, one tenant, author's account only. Not established: viewer isolation (LD-07), refreshed values after a workbook change (LD-05 follow-up), leading blank columns (LD-11), other tenants.

@@ -31,3 +31,5 @@ Assets: workbook data; the workbook item URL (tenant host + drive/item identifie
 Invariants the code enforces and tests check: no network, storage, `eval`/`Function`, dynamic import, worker or HTML-string-injection API in any export; no credentials, tokens, cookies or signed URLs; no sharing change or permission request by Studio; no hidden network fallback; Static Safe output is byte-identical to the a0525ce export.
 
 Release gate: LiveData stays experimental until LD-07 passes or its failure is explicitly accepted as an unresolved blocker. The maximum readiness now is `READY_FOR_CONTROLLED_TENANT_TEST`.
+
+LD-10 (2026-11-27): in one tenant the Interactive Safe CSP survived upload, SharePoint added only mso markup to the stored file, and Studio's runtime ran unchanged (T12, T15 observed, not proven for other tenants). Permission isolation (T4) is still untested.

@@ -36,10 +36,10 @@ Severity: BLOCKER, HIGH, MEDIUM, LOW. "Fixed" means corrected in this milestone 
 |---|---|---|---|
 | U1 | BLOCKER for pilot | Viewer isolation unknown: a user who can open the page but not the workbook might see data. | LD-07 with approved test users. If data appears: SECURITY BLOCKER. |
 | U2 | RESOLVED BY DISABLING | LD-09 (2026-11-27) disproved the A1 assumption: leading blank rows are dropped and metadata has no coordinates. | Arbitrary A1 addressing disabled (D-020). Live KPI export is blocked until a verified selector exists. |
-| U3 | MEDIUM | The runtime assumes `__LD_RESULTS__` exists when the page runs (as the generated page did). If a host injects later, the page shows the editor message. No retry is implemented on purpose. | LD-10. |
-| U4 | MEDIUM | If the CSP differs in another tenant and blocks the inline script, the page keeps showing "Loading live data…" with no explanation. | Controlled test; consider a static note. |
-| U5 | MEDIUM | SharePoint rewrites uploaded files (mso block, xmlns, 34-byte difference seen) and a comment in the generated runtime mentions a security layer that rewrites some script globals. Studio's runtime might be altered. | LD-10 compare stored vs exported file. |
-| U6 | MEDIUM | Refresh lag unquantified; the first refresh after an edit returned the old value. | LD-05 follow-up. |
+| U3 | LOW (observed OK) | The runtime assumes `__LD_RESULTS__` exists when the page runs. LD-10: it did in the tenant (view mode); in Edit mode it is absent and the editor state is shown. | none |
+| U4 | LOW (observed OK) | A different CSP in another tenant could block the inline script. LD-10: the policy survived upload and the runtime ran. | Other tenants untested. |
+| U5 | LOW (observed OK) | SharePoint rewrites uploaded files. LD-10: only xmlns:mso/msdt and an mso comment block were added; runtime, manifest, CSP and selector attributes byte-identical. | Later SharePoint versions untested. |
+| U6 | MEDIUM (open) | Refresh lag after a workbook change is unquantified; LD-10 did not change the workbook. | LD-05 follow-up. |
 | U7 | LOW | `base-uri` and `form-action` unset in both profiles (the exporter never emits `<base>`/`<form>`; the validator rejects `<base>` and warns on `<form>`). | Review after tenant evidence. |
 | U8 | LOW | `postMessage(..., '*')` as observed; content-free. | Narrow only with documented target. |
 | U9 | LOW | Number/date text from the host: LD-09 saw plain numbers (`23`) and ISO-looking dates (`2026-12-01`); formatting of currency, percentages and real date serials is unobserved. | Further synthetic layouts. |
@@ -69,3 +69,6 @@ Method: adversarial pass after the implementation, aimed at duplicate labels, fi
 Reviewed and sound (with tests): the first of several matches is never returned; no positional path remains (`readCell` and `parseCell` were removed and a test asserts they do not exist); legacy projects load as `deprecated-cell`, are never converted and stay blocked; reports contain the label length only; hostile labels and values stay inert text (no element, link or script; dollar-pattern strings, U+2028, closing script tags); one failing KPI does not affect another; 10,000 rows resolve well under 500 ms; very wide rows (500 cells) behave; TypeScript and runtime selector validation agree on every case in the parity table.
 
 Unresolved: S3 (leading blank columns), the permission gate LD-07 (still required for any pilot), refresh latency, whether SharePoint preserves the `data-sphs-label` attribute exactly, and Studio's runtime has still never run in a tenant. Readiness: `READY_FOR_CONTROLLED_TENANT_TEST`.
+
+## LD-10 outcome (2026-11-27)
+Studio's own export ran in the tenant and the label-adjacent selector returned 23 and 46 from the observed trimmed grid; failure cases were isolated and labelled; SharePoint preserved the manifest, runtime, CSP and selector attributes. Items U3 to U5 are downgraded to LOW (observed OK, one tenant). Still open: U1 viewer isolation (LD-07, required before any pilot), U6 refresh latency, S3 leading blank columns (LD-11), other tenants. No code change was needed. Readiness stays `READY_FOR_CONTROLLED_TENANT_TEST`; it cannot reach `READY_FOR_LIMITED_PILOT` until LD-07 passes.
