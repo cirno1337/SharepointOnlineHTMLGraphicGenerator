@@ -4,7 +4,7 @@ import type { WorkbookData } from '../core/excel/types';
 import { exportContext, renderPage } from '../core/export/render';
 import { compileManifest } from '../core/livedata/manifest';
 import { buildMockResults, mockFixtureWorkbook, mockInjectionScript, type MockScenario } from '../core/livedata/mock';
-import { emptyProject, parseProject, type Component } from '../core/project';
+import { emptyProject, LEGACY_CELL_NOTICE, parseProject, type Component } from '../core/project';
 import { BASELINE_TEMPLATE_NAME, buildBaselineProject } from '../core/templates/baseline';
 import { validateHtml, validateProject } from '../core/validate';
 import { downloadText, safeFileName } from './download';
@@ -71,7 +71,11 @@ export function App() {
       if (!r.ok) return setMessage({ kind: 'error', text: `Invalid project file: ${r.error}` });
       dispatch({ type: 'load', project: r.project });
       setSelectedId(r.project.page.components[0]?.id ?? null);
-      setMessage({ kind: 'ok', text: `Opened ${r.project.name}.` });
+      setMessage(
+        r.legacyComponentIds.length > 0
+          ? { kind: 'error', text: `Opened ${r.project.name}. ${r.legacyComponentIds.length} Live KPI(s) used a removed cell-address selection. ${LEGACY_CELL_NOTICE}` }
+          : { kind: 'ok', text: `Opened ${r.project.name}.` },
+      );
     } catch {
       setMessage({ kind: 'error', text: 'The file is not valid JSON.' });
     }

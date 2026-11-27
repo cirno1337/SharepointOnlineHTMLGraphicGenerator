@@ -30,7 +30,7 @@ export function summary(c: Component): string {
     case 'table':
       return `Table: ${c.caption}${c.binding ? ' (bound)' : ''}`;
     case 'liveKpi':
-      return `Live KPI: ${c.label} (${c.worksheet}!${c.cell}, experimental)`;
+      return `Live KPI: ${c.label} (${c.worksheet}, ${c.selector.type === 'label-adjacent' ? 'row label' : 'removed cell selection'}, experimental)`;
   }
 }
 

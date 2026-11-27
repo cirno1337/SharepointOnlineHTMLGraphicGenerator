@@ -38,3 +38,8 @@
 
 ### 0.3.0 addendum: LD-09 (2026-11-27)
 - Fixed (by disabling): A1 addressing of live data. The host CSV drops leading blank rows, so a CSV row is not an Excel row. Live KPIs now fail validation with `live-addressing-disabled`; the runtime reports `addressing-unsupported` and never a value; the mock preview emits the observed shape. Snapshot Excel A1 binding is unchanged.
+
+### 0.3.0 addendum: label-adjacent selector (2026-11-27)
+- Added: experimental `label-adjacent` Live KPI selector (row label + adjacent value) over the observed trimmed grid; runtime error codes `label-not-found`, `ambiguous-label`, `adjacent-value-missing`, `adjacent-value-empty` and configuration codes; editor fields (worksheet, row label, label column, value offset, case-sensitive, trim, allow empty); mock scenarios for duplicate label, missing label and missing value; report section `liveData.selectors` (label length only).
+- Changed: Live KPIs no longer have a `cell`; old projects load as `deprecated-cell` (warning, export blocked, never converted). Interactive Safe export is available again for valid selectors.
+- Removed: the positional runtime functions (`readCell`, `parseCell`) and `parseLiveCellAddress`.

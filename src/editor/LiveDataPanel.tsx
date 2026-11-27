@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CELL_ADDRESSING_NOTICE, LIVEDATA_CONTRACT_REVISION, LIVEDATA_UI_WARNING, PERMISSION_BLOCKER_NOTICE } from '../core/livedata/constants';
+import { SELECTOR_SEMANTICS_NOTICE, LIVEDATA_CONTRACT_REVISION, LIVEDATA_UI_WARNING, PERMISSION_BLOCKER_NOTICE } from '../core/livedata/constants';
 import { MOCK_SCENARIOS, type MockScenario } from '../core/livedata/mock';
 import { renderProbePage } from '../core/livedata/probe';
 import { compileManifest } from '../core/livedata/manifest';
@@ -101,7 +101,7 @@ export function LiveDataPanel({ project, dispatch, scenario, onScenario }: Props
               ))}
             </select>
           </label>
-          <p className="muted">{CELL_ADDRESSING_NOTICE}</p>
+          <p className="muted">{SELECTOR_SEMANTICS_NOTICE}</p>
 
           <h3>Sources</h3>
           {liveSources.length === 0 ? (

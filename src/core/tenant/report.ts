@@ -50,6 +50,22 @@ export const ValidationReportSchema = z.object({
     cslViewLinkInExport: z.boolean(),
     explicitSharingDecisionRequired: z.boolean(),
     fallbackAvailable: z.boolean(),
+    capability: z.literal('experimental').nullable(),
+    permissionTestOutstanding: z.boolean(),
+    selectorEvidence: z.string().nullable(),
+    /** One entry per Live KPI. Never the label text (it may be business-sensitive): only its length. */
+    selectors: z.array(
+      z.object({
+        selectorType: z.string(),
+        worksheet: z.string(),
+        labelLength: z.number().int().nonnegative().nullable(),
+        matchColumn: z.number().int().nullable(),
+        valueOffset: z.number().int().nullable(),
+        caseSensitive: z.boolean().nullable(),
+        trim: z.boolean().nullable(),
+        snapshotFallbackPresent: z.boolean(),
+      }),
+    ),
   }),
   notes: z.array(z.string()),
 });
@@ -121,6 +137,25 @@ export async function createTenantTestExport(project: Project, ctx: RenderContex
       cslViewLinkInExport: false,
       explicitSharingDecisionRequired: liveUsed,
       fallbackAvailable: liveKpis.some((c) => c.type === 'liveKpi' && !!c.fallback),
+      capability: liveUsed ? 'experimental' : null,
+      permissionTestOutstanding: liveUsed,
+      selectorEvidence: liveUsed ? 'label-adjacent: design derived from one tenant observation (LD-09, TENANT_OBSERVED_ONCE); not documented by Microsoft' : null,
+      selectors: liveKpis.flatMap((c) =>
+        c.type !== 'liveKpi'
+          ? []
+          : [
+              {
+                selectorType: c.selector.type,
+                worksheet: c.worksheet,
+                labelLength: c.selector.type === 'label-adjacent' ? c.selector.label.length : null,
+                matchColumn: c.selector.type === 'label-adjacent' ? c.selector.matchColumn : null,
+                valueOffset: c.selector.type === 'label-adjacent' ? c.selector.valueOffset : null,
+                caseSensitive: c.selector.type === 'label-adjacent' ? c.selector.caseSensitive : null,
+                trim: c.selector.type === 'label-adjacent' ? c.selector.trim : null,
+                snapshotFallbackPresent: !!c.fallback,
+              },
+            ],
+      ),
     },
     notes: [
       'Local test metadata. Not part of the exported page. Do not publish it to SharePoint.',

@@ -1,7 +1,5 @@
 import type { WorkbookData } from '../excel/types';
 import {
-  CELL_ADDRESSING_NOTICE,
-  LIVE_CELL_ADDRESSING_ENABLED,
   LIVEDATA_CONTRACT_REVISION,
   LIVEDATA_PROVIDER_EVIDENCE,
   LIVEDATA_WARNING,
@@ -9,7 +7,8 @@ import {
 } from './constants';
 import { compileManifest, type ManifestEntry } from './manifest';
 import { buildMockResults, mockFixtureWorkbook, type MockHostResult, type MockScenario } from './mock';
-import { parseLiveCellAddress, validateLiveSourceShape, type LiveSource } from './source';
+import { validateSelector, type LiveSelector } from './selector';
+import { validateLiveSourceShape, type LiveSource } from './source';
 
 export type ProviderCapability = 'confirmed' | 'experimental' | 'unsupported' | 'unknown';
 
@@ -19,10 +18,10 @@ export interface ValidationResult {
   message: string;
 }
 
-/** What to read: transport (the source) is separate from Excel selection (worksheet + cell). */
+/** What to read: transport (the source) is separate from the Excel selection (worksheet + semantic selector). */
 export interface ExcelSelection {
   worksheet: string;
-  selection: { type: 'cell'; address: string };
+  selection: LiveSelector;
 }
 
 export interface LiveExcelConfig {
@@ -77,10 +76,7 @@ export const sharePointExcelLiveProvider: DataProvider<LiveExcelConfig, Record<s
   validate(config) {
     const out: ValidationResult[] = [...validateLiveSourceShape(config.source)];
     if (!config.selection.worksheet.trim()) out.push({ severity: 'error', code: 'worksheet-missing', message: 'Enter the worksheet name.' });
-    if (config.selection.selection.type !== 'cell' || parseLiveCellAddress(config.selection.selection.address) === null) {
-      out.push({ severity: 'error', code: 'cell-invalid', message: 'Use a single cell such as A1, B7 or AA10 (no ranges, rows, columns or sheet names).' });
-    }
-    if (!LIVE_CELL_ADDRESSING_ENABLED) out.push({ severity: 'error', code: 'addressing-disabled', message: CELL_ADDRESSING_NOTICE });
+    for (const p of validateSelector(config.selection.selection)) out.push({ severity: 'error', code: p.code, message: p.message });
     return out;
   },
 

@@ -2,6 +2,7 @@ import { isSafeHref, type Component, type Project } from '../project';
 import { STUDIO_BUILD } from '../version';
 import { snapshotProvider } from '../providers';
 import { FRESHNESS_HINT } from '../livedata/constants';
+import type { LiveSelector } from '../livedata/selector';
 import { compileManifest, type CompiledManifest } from '../livedata/manifest';
 import { RUNTIME_SOURCE } from '../livedata/runtime';
 import { escapeHtml, formatCell } from './escape';
@@ -88,6 +89,20 @@ function domId(id: string): string {
   return `sphs-${id.replace(/[^A-Za-z0-9_-]/g, '_')}`;
 }
 
+/** Selector data attributes. A removed positional selector is emitted as "unsupported" (validation blocks that export). */
+function selectorAttrs(sel: LiveSelector): string[] {
+  if (sel.type !== 'label-adjacent') return ['data-sphs-selector="unsupported"'];
+  return [
+    'data-sphs-selector="label-adjacent"',
+    `data-sphs-label="${escapeHtml(sel.label).replace(/\r/g, '&#13;')}"`,
+    `data-sphs-match-col="${sel.matchColumn}"`,
+    `data-sphs-value-offset="${sel.valueOffset}"`,
+    `data-sphs-case="${sel.caseSensitive ? 1 : 0}"`,
+    `data-sphs-trim="${sel.trim ? 1 : 0}"`,
+    `data-sphs-allow-empty="${sel.allowEmptyValue ? 1 : 0}"`,
+  ];
+}
+
 function renderLiveKpi(c: Extract<Component, { type: 'liveKpi' }>, opts: RenderOptions): string {
   const label = escapeHtml(c.label);
   if (!opts.interactive) {
@@ -99,7 +114,7 @@ function renderLiveKpi(c: Extract<Component, { type: 'liveKpi' }>, opts: RenderO
     'data-sphs-live="kpi"',
     `data-sphs-source="${index === undefined ? -1 : index}"`,
     `data-sphs-sheet="${escapeHtml(c.worksheet)}"`,
-    `data-sphs-cell="${escapeHtml(c.cell)}"`,
+    ...selectorAttrs(c.selector),
     `data-sphs-format="${c.numberFormat}"`,
     `data-sphs-show-loaded="${c.showLoadedAt ? 1 : 0}"`,
     `data-sphs-show-refresh="${c.showRefresh ? 1 : 0}"`,

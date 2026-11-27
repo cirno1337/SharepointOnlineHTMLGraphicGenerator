@@ -132,17 +132,57 @@
     return { ok: true, rows: rows };
   }
 
-  /* ---------- A1 single-cell addresses ---------- */
+  /* ---------- semantic selector: label-adjacent ----------
+   * LD-09 (one tenant): the host CSV is a TRIMMED grid (leading blank rows absent, no coordinates), so there is no
+   * positional (Excel A1) selection at all. label-adjacent finds exactly one row whose cell in matchColumn equals the
+   * label and returns the cell valueOffset columns away in the same row. Exact match only: no fuzzy matching, no regex,
+   * no punctuation or diacritic removal, no interior-whitespace collapsing, no numeric coercion.
+   * Normalisation of BOTH sides: Unicode NFC (when String.prototype.normalize exists), then trim (optional), then
+   * String.prototype.toLowerCase (optional; locale-independent but NOT full Unicode case folding). */
+  var SEL = { maxLabelChars: 255, maxMatchColumn: 499, maxValueOffset: 499 };
 
-  function parseCell(address) {
-    if (typeof address !== 'string') return null;
-    var m = /^([A-Z]{1,3})([1-9][0-9]{0,6})$/.exec(address);
-    if (!m) return null;
-    var col = 0;
-    for (var k = 0; k < m[1].length; k++) col = col * 26 + (m[1].charCodeAt(k) - 64);
-    var row = parseInt(m[2], 10);
-    if (col > 16384 || row > 1048576) return null;
-    return { col: col - 1, row: row - 1 };
+  function normLabel(s, trim, caseSensitive) {
+    if (typeof s.normalize === 'function') s = s.normalize('NFC');
+    if (trim) s = s.trim();
+    if (!caseSensitive) s = s.toLowerCase();
+    return s;
+  }
+
+  /* Returns a failure object, or null when the selector configuration is acceptable. */
+  function checkSelector(sel) {
+    if (!sel || typeof sel !== 'object' || sel.type !== 'label-adjacent') return fail('selector-unsupported');
+    if (typeof sel.label !== 'string') return fail('label-empty');
+    if ((sel.trim ? sel.label.trim() : sel.label) === '') return fail('label-empty');
+    if (sel.label.length > SEL.maxLabelChars) return fail('label-too-long');
+    var mc = sel.matchColumn;
+    var vo = sel.valueOffset;
+    if (typeof mc !== 'number' || mc % 1 !== 0 || mc < 0 || mc > SEL.maxMatchColumn) return fail('match-column-invalid');
+    if (typeof vo !== 'number' || vo % 1 !== 0 || vo === 0 || Math.abs(vo) > SEL.maxValueOffset || mc + vo < 0) return fail('value-offset-invalid');
+    return null;
+  }
+
+  function selectLabelAdjacent(rows, sel) {
+    var bad = checkSelector(sel);
+    if (bad) return bad;
+    var want = normLabel(sel.label, sel.trim, sel.caseSensitive);
+    var mc = sel.matchColumn;
+    var hit = -1;
+    for (var r = 0; r < rows.length; r++) {
+      var row = rows[r];
+      if (row.length <= mc) continue;
+      if (normLabel(row[mc], sel.trim, sel.caseSensitive) === want) {
+        if (hit >= 0) return fail('ambiguous-label');
+        hit = r;
+      }
+    }
+    if (hit < 0) return fail('label-not-found');
+    var matched = rows[hit];
+    var vc = mc + sel.valueOffset;
+    if (vc >= matched.length) return fail('adjacent-value-missing');
+    var v = matched[vc];
+    /* Whitespace-only counts as empty (it would render as a blank "live" value); a non-empty value is never altered. */
+    if (v.trim() === '') return sel.allowEmptyValue ? { ok: true, value: '', empty: true } : fail('adjacent-value-empty');
+    return { ok: true, value: v, empty: false };
   }
 
   /* Looks up a worksheet by exact trimmed, case-insensitive name; the FIRST match wins (deterministic). */
@@ -152,25 +192,6 @@
       if (String(sheets[s].name).trim().toLowerCase() === want) return sheets[s];
     }
     return null;
-  }
-
-  /* Pure CSV-grid lookup (row/column index within the parsed CSV). NOT an Excel A1 lookup: LD-09 showed the host
-     drops leading blank rows, so resolveKpi does not use this. Kept for the grid tests only. */
-  function readCell(sheets, worksheet, address) {
-    var pos = parseCell(address);
-    if (!pos) return fail('bad-address');
-    var sheet = findSheet(sheets, worksheet);
-    if (!sheet) return fail('worksheet-not-found');
-    if (!has(sheet, '_rows')) sheet._rows = parseCsv(sheet.csv);
-    var parsed = sheet._rows;
-    if (!parsed.ok) return fail(parsed.code);
-    var rows = parsed.rows;
-    var width = 0;
-    for (var r = 0; r < rows.length; r++) if (rows[r].length > width) width = rows[r].length;
-    if (pos.row >= rows.length || pos.col >= width) return fail('cell-not-found');
-    var line = rows[pos.row];
-    var v = pos.col < line.length ? line[pos.col] : '';
-    return { ok: true, value: v, empty: v === '' };
   }
 
   /* ---------- host result handling ---------- */
@@ -230,10 +251,14 @@
     }
     var env = parseEnvelope(result.content);
     if (!env.ok) return merge(fail(env.code), base);
-    /* LD-09: the host CSV does not keep leading blank rows, so an Excel A1 address cannot be mapped onto it.
-       Cell selection is disabled; never guess a position. */
-    if (!findSheet(env.sheets, cfg.sheet)) return merge(fail('worksheet-not-found'), base);
-    return merge(fail('addressing-unsupported'), base);
+    var sheet = findSheet(env.sheets, cfg.sheet);
+    if (!sheet) return merge(fail('worksheet-not-found'), base);
+    if (!has(sheet, '_rows')) sheet._rows = parseCsv(sheet.csv);
+    if (!sheet._rows.ok) return merge(fail(sheet._rows.code), base);
+    /* Semantic selection only. There is deliberately no positional (Excel A1) path and no fallback to one. */
+    var picked = selectLabelAdjacent(sheet._rows.rows, cfg.selector);
+    if (!picked.ok) return merge(fail(picked.code), base);
+    return { ok: true, value: picked.value, empty: picked.empty, ref: ref };
   }
 
   function merge(a, b) {
@@ -254,11 +279,28 @@
     'too-many-columns': 'The worksheet has too many columns.',
     'cell-too-long': 'A cell value is too long to display.',
     'worksheet-not-found': 'Worksheet not found.',
-    'cell-not-found': 'Cell not found.',
-    'bad-address': 'The configured cell address is not valid.',
-    'addressing-unsupported': 'Selecting a cell from live data is not supported.',
+    'adjacent-value-missing': 'The matching row does not contain a value in the configured adjacent column.',
+    'adjacent-value-empty': 'The matching row has an empty value in the configured adjacent column.',
+    'label-empty': 'The row label is empty.',
+    'label-too-long': 'The row label is too long.',
+    'match-column-invalid': 'The label column is not valid.',
+    'value-offset-invalid': 'The value offset is not valid.',
+    'selector-unsupported': 'This selection method is not supported.',
     'source-config': 'The live data source is not configured correctly.'
   };
+
+  /* The configured label (author text) is shown only through textContent, shortened, in typographic quotes. */
+  function quotedLabel(cfg) {
+    var l = cfg.selector && typeof cfg.selector.label === 'string' ? cfg.selector.label : '';
+    if (l.length > 80) l = l.slice(0, 80) + '…';
+    return '‘' + l + '’';
+  }
+
+  function messageFor(code, cfg) {
+    if (code === 'label-not-found') return 'No row matched the label ' + quotedLabel(cfg) + '.';
+    if (code === 'ambiguous-label') return 'More than one row matched ' + quotedLabel(cfg) + '. Use a more specific label.';
+    return MESSAGES[code] || MESSAGES['host-error'];
+  }
 
   /* View model for one KPI: live value, labelled snapshot fallback, or error. Never mixes them silently. */
   function present(cfg, res, loadedAt) {
@@ -270,7 +312,7 @@
       vm.status = res.empty ? '' : statusFor(res.value, cfg);
       return vm;
     }
-    var generic = MESSAGES[res.code] || MESSAGES['host-error'];
+    var generic = messageFor(res.code, cfg);
     vm.message = res.code === 'no-prefetch' ? generic : cfg.errorText || generic;
     var d = 'Diagnostic: ' + res.code;
     if (res.hostCode) d += ' (' + res.hostCode + ')';
@@ -289,8 +331,9 @@
     LIMITS: LIMITS,
     parseEnvelope: parseEnvelope,
     parseCsv: parseCsv,
-    parseCell: parseCell,
-    readCell: readCell,
+    normLabel: normLabel,
+    checkSelector: checkSelector,
+    selectLabelAdjacent: selectLabelAdjacent,
     resolveKpi: resolveKpi,
     present: present,
     formatValue: formatValue,
@@ -316,7 +359,19 @@
     return {
       source: parseInt(d.sphsSource, 10),
       sheet: d.sphsSheet || '',
-      cell: d.sphsCell || '',
+      selector:
+        d.sphsSelector === 'label-adjacent'
+          ? {
+              type: 'label-adjacent',
+              label: d.sphsLabel === undefined ? '' : d.sphsLabel,
+              matchColumn: Number(d.sphsMatchCol),
+              valueOffset: Number(d.sphsValueOffset),
+              matchMode: 'exact',
+              caseSensitive: d.sphsCase === '1',
+              trim: d.sphsTrim === '1',
+              allowEmptyValue: d.sphsAllowEmpty === '1'
+            }
+          : { type: 'unsupported' },
       format: d.sphsFormat || 'auto',
       prefix: d.sphsPrefix || '',
       suffix: d.sphsSuffix || '',

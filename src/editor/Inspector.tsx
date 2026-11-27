@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { normalizeAddress } from '../core/excel/address';
 import { makeBinding } from '../core/excel/resolve';
 import type { WorkbookData } from '../core/excel/types';
-import { parseLiveCellAddress, type LiveSource } from '../core/livedata/source';
-import { isSafeHref, linkKind, type Binding, type Component, type Selection } from '../core/project';
+import { defaultLabelAdjacent, validateSelector, type LabelAdjacentSelector } from '../core/livedata/selector';
+import type { LiveSource } from '../core/livedata/source';
+import { isSafeHref, LEGACY_CELL_NOTICE, linkKind, type Binding, type Component, type Selection } from '../core/project';
 import type { Pick } from './WorkbookPanel';
 
 interface Props {
@@ -22,14 +23,33 @@ function numOrUndefined(v: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+/** Whole-number field that keeps what the user types (so "-" can be typed) and commits only valid integers. */
+function IntField({ label, caption, value, onCommit }: { label: string; caption: string; value: number; onCommit: (n: number) => void }) {
+  const [text, setText] = useState(String(value));
+  return (
+    <label className="field">
+      {caption}
+      <input
+        aria-label={label}
+        inputMode="numeric"
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          if (/^-?\d+$/.test(e.target.value.trim())) onCommit(Number(e.target.value.trim()));
+        }}
+        onBlur={() => setText(String(value))}
+      />
+    </label>
+  );
+}
+
 /** Inspector for the EXPERIMENTAL Live Excel KPI. Excel selection (sheet + cell) is separate from the data source. */
-function LiveKpiEditor({ c, workbook, liveSources, onChange }: { c: LiveKpi; workbook: WorkbookData | null; liveSources: LiveSource[]; onChange: (c: Component) => void }) {
-  const cellOk = parseLiveCellAddress(c.cell) !== null;
-  function useWorkbookValue() {
-    const v = workbook?.sheets.find((s) => s.name === c.worksheet)?.cells[c.cell];
-    if (v === undefined || v === null) return;
-    onChange({ ...c, fallback: { value: String(v), importedAt: workbook?.importedAt } });
-  }
+function LiveKpiEditor({ c, liveSources, onChange }: { c: LiveKpi; liveSources: LiveSource[]; onChange: (c: Component) => void }) {
+  const sel = c.selector;
+  const problems = sel.type === 'label-adjacent' ? validateSelector(sel) : [];
+  const setSel = (patch: Partial<LabelAdjacentSelector>) => {
+    if (sel.type === 'label-adjacent') onChange({ ...c, selector: { ...sel, ...patch } });
+  };
   return (
     <>
       <p role="note" className="error">
@@ -55,12 +75,61 @@ function LiveKpiEditor({ c, workbook, liveSources, onChange }: { c: LiveKpi; wor
         <input value={c.worksheet} onChange={(e) => onChange({ ...c, worksheet: e.target.value })} />
       </label>
       <label className="field">
-        Cell (single cell, e.g. B7)
-        <input value={c.cell} aria-invalid={!cellOk} aria-describedby="live-cell-help" onChange={(e) => onChange({ ...c, cell: e.target.value.trim().toUpperCase() })} />
+        Selection method
+        <select
+          aria-label="Selection method"
+          value={sel.type}
+          onChange={(e) => {
+            if (e.target.value === 'label-adjacent' && sel.type !== 'label-adjacent') onChange({ ...c, selector: defaultLabelAdjacent('') });
+          }}
+        >
+          {sel.type === 'deprecated-cell' && (
+            <option value="deprecated-cell" disabled>
+              Cell address (removed)
+            </option>
+          )}
+          <option value="label-adjacent">Row label + adjacent value</option>
+        </select>
       </label>
-      <p id="live-cell-help" className={cellOk ? 'muted' : 'error'} role={cellOk ? undefined : 'alert'}>
-        {cellOk ? 'Assumes the host data starts at A1 (unverified, see the warning in the panel).' : 'Not a valid single cell. Ranges, rows, columns and sheet names are not accepted.'}
-      </p>
+      {sel.type === 'deprecated-cell' ? (
+        <p role="alert" className="error" data-testid="legacy-selector">
+          {LEGACY_CELL_NOTICE} (Old address: {sel.address}.) It is not converted automatically.
+        </p>
+      ) : (
+        <>
+          <p className="muted">
+            Example: a worksheet row <strong>Open issues | 23</strong> with label “Open issues”, label column 1 and value offset 1 shows 23. LiveData may omit leading blank worksheet rows. Selection therefore uses visible row content instead of Excel cell coordinates.
+          </p>
+          <label className="field">
+            Row label
+            <input aria-label="Row label" value={sel.label} aria-invalid={problems.some((p) => p.code === 'label-empty' || p.code === 'label-too-long')} onChange={(e) => setSel({ label: e.target.value })} />
+          </label>
+          <IntField label="Label column" caption="Label column (1 = first column of the delivered data; SharePoint may omit empty leading columns, which was not observed)" value={sel.matchColumn + 1} onCommit={(n) => setSel({ matchColumn: n - 1 })} />
+          <IntField label="Value offset" caption="Value offset (columns from the label; 1 = next column, negative = left)" value={sel.valueOffset} onCommit={(n) => setSel({ valueOffset: n })} />
+          <label className="field">
+            <span>
+              <input type="checkbox" checked={sel.caseSensitive} onChange={(e) => setSel({ caseSensitive: e.target.checked })} /> Case-sensitive match
+            </span>
+          </label>
+          <label className="field">
+            <span>
+              <input type="checkbox" checked={sel.trim} onChange={(e) => setSel({ trim: e.target.checked })} /> Trim matching whitespace
+            </span>
+          </label>
+          <label className="field">
+            <span>
+              <input type="checkbox" checked={sel.allowEmptyValue} onChange={(e) => setSel({ allowEmptyValue: e.target.checked })} /> Allow an empty adjacent value
+            </span>
+          </label>
+          {problems.length > 0 && (
+            <ul role="alert" className="error">
+              {problems.map((p) => (
+                <li key={p.code}>{p.message}</li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
       <label className="field">
         Prefix
         <input value={c.prefix} onChange={(e) => onChange({ ...c, prefix: e.target.value })} />
@@ -114,9 +183,6 @@ function LiveKpiEditor({ c, workbook, liveSources, onChange }: { c: LiveKpi; wor
             onChange={(e) => onChange({ ...c, fallback: e.target.value === '' ? undefined : { value: e.target.value, importedAt: c.fallback?.importedAt ?? new Date().toISOString() } })}
           />
         </label>
-        <button type="button" onClick={useWorkbookValue} disabled={!workbook}>
-          Use the imported workbook’s value
-        </button>
       </fieldset>
     </>
   );
@@ -308,7 +374,7 @@ export function Inspector({ component, workbook, pick, liveSources, onChange }: 
           </p>
         </>
       )}
-      {c.type === 'liveKpi' && <LiveKpiEditor key={c.id} c={c} workbook={workbook} liveSources={liveSources} onChange={onChange} />}
+      {c.type === 'liveKpi' && <LiveKpiEditor key={c.id} c={c} liveSources={liveSources} onChange={onChange} />}
       {c.type === 'stamp' && (
         <p className="muted">Renders the export timestamp and Studio build identifier. Values are filled in at export time; the preview shows a placeholder.</p>
       )}

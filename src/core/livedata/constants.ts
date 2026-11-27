@@ -28,15 +28,13 @@ export const PERMISSION_BLOCKER_NOTICE =
   'Permission isolation has not yet been validated with a viewer who can access the page but not the workbook. LiveData is not approved for limited pilot until LD-07 passes.';
 
 /**
- * LD-09 (2026-11-27, one tenant): the host's xlsx-sheets CSV does NOT keep leading blank worksheet rows (Excel
- * Summary!B7 arrived as the first CSV row) and the metadata carries only fileName and extension, so worksheet
- * coordinates cannot be restored. Arbitrary A1 addressing of live data is therefore disabled. Snapshot Excel
- * (local import, A1 from the workbook file itself) is unaffected.
+ * LD-09 (2026-11-27, one tenant, TENANT_OBSERVED_ONCE): the host's xlsx-sheets CSV is a TRIMMED grid. Leading blank
+ * worksheet rows are absent (Excel Summary!B7 arrived as the first CSV row) and the metadata carries only fileName and
+ * extension, so Excel coordinates cannot be restored. Positional A1 selection of live data is NOT supported (D-020).
+ * Live Excel uses semantic selectors over the trimmed grid (D-021). Snapshot Excel (local import) is unaffected.
  */
-export const LIVE_CELL_ADDRESSING_ENABLED = false as const;
-
-export const CELL_ADDRESSING_NOTICE =
-  'Live Excel cannot select a cell by its A1 address: the data SharePoint provides does not keep leading blank rows, so a CSV row is not an Excel row (observed in LD-09, one tenant). Use Excel Snapshot for cell-addressed values.';
+export const SELECTOR_SEMANTICS_NOTICE =
+  'LiveData may omit leading blank worksheet rows. Selection therefore uses visible row content instead of Excel cell coordinates. This relies on an undocumented grid observed in one tenant (LD-09); it is not Excel row or cell addressing.';
 
 export const FRESHNESS_HINT = 'Recent workbook changes may take time to appear.';
 export const EDITOR_UNAVAILABLE_MESSAGE =
@@ -55,9 +53,6 @@ export const LIVEDATA_LIMITS = {
   maxSheetNameChars: 255,
 } as const;
 
-/** Excel's own limits for a single-cell A1 address. */
-export const MAX_EXCEL_COLUMN = 16384; // XFD
-export const MAX_EXCEL_ROW = 1_048_576;
 
 export const MAX_LIVE_SOURCES = 10;
 

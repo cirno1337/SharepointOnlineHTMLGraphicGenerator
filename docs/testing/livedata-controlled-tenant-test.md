@@ -41,3 +41,17 @@ Until A to C are recorded the readiness class cannot exceed `READY_FOR_CONTROLLE
 ## Evidence rules
 
 Follow the secrecy rules in `real-tenant-baseline.md` (no HAR, no headers, no tokens, no host names). Record results in `docs/research/livedata-experiments.md` using its template and classify each as `TENANT_OBSERVED_ONCE`, `TENANT_OBSERVED_REPRODUCED`, `FAILED_IN_CURRENT_TEST`, `HYPOTHESIS` or `UNKNOWN`.
+
+## LD-10 (exact next test): Studio's own export with a `label-adjacent` KPI
+
+Preconditions: this milestone's build with `VITE_EXPERIMENTAL_EXCEL_LIVE=true`; the existing synthetic workbook (rows `Open issues | 23` and `Doubled | 46` on `Summary`); a Studio source for it (item URL typed by the tester, never committed). **No workbook, sharing or permission change is needed.**
+1. In Studio add the source, add a Live KPI: worksheet `Summary`, row label `Open issues`, Column 1, offset 1, a snapshot fallback of `0`, case-insensitive and trim on. Add a second KPI with label `Doubled`. Export Interactive Safe; keep the validation report and the file SHA-256 (the report contains the label length only).
+2. Upload as a NEW page named `sphs-lab-studio-label-adjacent.html` (do not overwrite anything).
+3. View mode: expect `23` and `46` (or the workbook's current values), "Loaded from SharePoint at ...", the hint, no console CSP errors; Refresh posts only the fixed message and disables for about 8 seconds; no fallback badge.
+4. Compare the stored file with the export: is `data-sphs-label` unchanged, which attributes did SharePoint rewrite, did the inline runtime survive byte for byte?
+5. Edit mode: the editor message and the labelled fallback.
+6. Failure checks that need no workbook change: add a third KPI with a label that does not exist (expect `No row matched the label ...` and its fallback) and one with `valueOffset` 5 (expect the missing-value message).
+Record sanitized results in the ledger as `TENANT_OBSERVED_ONCE` or `FAILED_IN_CURRENT_TEST`. If the value is wrong or the runtime is altered, stop and do not widen the experiment.
+
+## LD-11 (proposal; needs separate approval because it changes a workbook)
+A second synthetic worksheet that separates "trimmed" from "positional" for columns and interior rows: a label in `C3` with its value in `D3`, a label in `A6` with its value in `B6`, a fully blank row 4 and a blank column B. Upload the LD-09 probe page again against it and record which leading columns and interior rows survive. This settles audit item S3 and decides whether `matchColumn` needs a different meaning.

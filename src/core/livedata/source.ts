@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LIVEDATA_CONTRACT_REVISION, MAX_EXCEL_COLUMN, MAX_EXCEL_ROW } from './constants';
+import { LIVEDATA_CONTRACT_REVISION } from './constants';
 
 /**
  * Shape observed for spItemUrl in the test tenant: an absolute https URL
@@ -102,18 +102,3 @@ export function sanitizedDiagnostic(source: LiveSource): Record<string, unknown>
   };
 }
 
-/** Strict canonical single-cell A1 address: uppercase letters then row, within Excel's bounds. */
-export function parseLiveCellAddress(addr: string): { col: number; row: number } | null {
-  const m = /^([A-Z]{1,3})([1-9][0-9]{0,6})$/.exec(addr);
-  if (!m) return null;
-  let col = 0;
-  for (const ch of m[1] as string) col = col * 26 + (ch.charCodeAt(0) - 64);
-  const row = Number(m[2]);
-  if (col > MAX_EXCEL_COLUMN || row > MAX_EXCEL_ROW) return null;
-  return { col, row };
-}
-
-export const LiveCellAddressSchema = z
-  .string()
-  .max(10)
-  .refine((a) => parseLiveCellAddress(a) !== null, 'Use a single cell such as A1, B7 or AA10 (no ranges, rows, columns or sheet names).');

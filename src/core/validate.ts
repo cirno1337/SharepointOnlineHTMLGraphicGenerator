@@ -1,9 +1,10 @@
 import { MAX_HTML_BYTES } from './capabilities';
 import { INTERACTIVE_CSP, STATIC_CSP } from './export/render';
-import { CELL_ADDRESSING_NOTICE, LIVE_CELL_ADDRESSING_ENABLED, LIVEDATA_WARNING, MAX_LIVE_SOURCES, PERMISSION_BLOCKER_NOTICE } from './livedata/constants';
+import { LIVEDATA_WARNING, MAX_LIVE_SOURCES, PERMISSION_BLOCKER_NOTICE, SELECTOR_SEMANTICS_NOTICE } from './livedata/constants';
+import { validateSelector } from './livedata/selector';
 import { RUNTIME_SOURCE } from './livedata/runtime';
-import { parseLiveCellAddress, parseSpItemUrl, validateLiveSourceShape } from './livedata/source';
-import type { ExportProfile, Project } from './project';
+import { parseSpItemUrl, validateLiveSourceShape } from './livedata/source';
+import { LEGACY_CELL_NOTICE, type ExportProfile, type Project } from './project';
 
 export type Severity = 'error' | 'warning';
 export interface Issue {
@@ -78,15 +79,21 @@ function validateLive(project: Project, opts: ValidateProjectOptions): Issue[] {
   if (page.exportProfile !== 'interactive-safe') err('live-needs-interactive', 'Live Excel components need the Interactive Safe export profile.');
   warn('live-experimental', LIVEDATA_WARNING);
   warn('live-permissions', PERMISSION_BLOCKER_NOTICE);
-  if (!LIVE_CELL_ADDRESSING_ENABLED) {
-    for (const c of live) err('live-addressing-disabled', CELL_ADDRESSING_NOTICE, c.id);
-  }
+  warn('live-selector-semantics', SELECTOR_SEMANTICS_NOTICE);
 
   const reported = new Set<string>();
   for (const c of live) {
     if (!c.label.trim()) err('live-label', 'Live KPI needs a label.', c.id);
     if (!c.worksheet.trim()) err('live-worksheet', 'Live KPI needs a worksheet name.', c.id);
-    if (parseLiveCellAddress(c.cell) === null) err('live-cell', 'Live KPI cell must be a single cell such as B7.', c.id);
+    if (c.selector.type === 'deprecated-cell') {
+      err('live-selector-deprecated', LEGACY_CELL_NOTICE, c.id);
+    } else {
+      for (const p of validateSelector(c.selector)) err(`live-selector-${p.code}`, p.message, c.id);
+      if (!c.selector.caseSensitive) {
+        warn('live-case-insensitive', 'Case-insensitive matching treats labels that differ only by letter case as the same label, which can make a label ambiguous.', c.id);
+      }
+    }
+    if (!c.fallback) warn('live-no-fallback', 'No snapshot fallback is set. If live data is unavailable the KPI shows an error state instead of a value.', c.id);
     if (c.warnAt !== undefined && c.criticalAt !== undefined && c.criticalAt < c.warnAt) {
       warn('live-thresholds', 'The critical threshold is lower than the warning threshold.', c.id);
     }

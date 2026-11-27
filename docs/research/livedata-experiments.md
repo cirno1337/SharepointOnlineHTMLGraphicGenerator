@@ -158,3 +158,6 @@ Cheapest follow-up that would separate "trimmed to first non-empty row" from oth
 ### Read-only inspection performed during this phase
 One read-only fetch of the Copilot-generated page's stored file from the author's browser to read how it indexed CSV rows. No tenant content was changed.
 LD-09: one read-only REST list of the Site Pages file names (to confirm the probe name was free) and one read of the stored bytes of an existing lab page (inside the browser) to obtain the manifest.
+
+## Implementation after LD-09: label-adjacent selector (2026-11-27, local only; no tenant operations)
+Positional selection stays disabled (D-020). A semantic selector, `label-adjacent`, was designed and implemented over the trimmed grid exactly as LD-09 delivered it (D-021). Class: a design DERIVED from one `TENANT_OBSERVED_ONCE` observation; not Microsoft-documented; not guaranteed SharePoint behavior; not Excel-coordinate equivalent. Verified only locally: unit tests run the exact exported runtime against the observed payload (`Open issues` gives `23`, `Doubled` gives `46`), a real browser runs exported pages, and the Playwright flow configures the selector through the UI. **Not yet run in a tenant.** The tenant outcome is still `UNKNOWN`; LD-10 (in the controlled test protocol) is the next controlled test.

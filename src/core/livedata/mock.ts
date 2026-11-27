@@ -9,14 +9,16 @@ import { safeJsonForScript } from './manifest';
  * observed SharePoint host injects, from SANITIZED fixture data or from a locally imported workbook.
  * It is never connected to SharePoint and makes no network requests.
  */
-export type MockScenario = 'ok' | 'missing' | 'host-error' | 'missing-worksheet' | 'missing-cell' | 'malformed' | 'unsupported-format' | 'empty';
+export type MockScenario = 'ok' | 'missing' | 'host-error' | 'missing-worksheet' | 'label-not-found' | 'duplicate-label' | 'missing-value' | 'malformed' | 'unsupported-format' | 'empty';
 
 export const MOCK_SCENARIOS: readonly { id: MockScenario; label: string }[] = [
   { id: 'ok', label: 'Successful result' },
   { id: 'missing', label: 'No prefetched result (editor / missing key)' },
   { id: 'host-error', label: 'Host error (result.error)' },
   { id: 'missing-worksheet', label: 'Worksheet not found' },
-  { id: 'missing-cell', label: 'Cell not found' },
+  { id: 'label-not-found', label: 'Row label not found' },
+  { id: 'duplicate-label', label: 'Duplicate row label (ambiguous)' },
+  { id: 'missing-value', label: 'Adjacent value missing' },
   { id: 'malformed', label: 'Malformed envelope' },
   { id: 'unsupported-format', label: 'Unsupported format' },
   { id: 'empty', label: 'Empty content' },
@@ -79,8 +81,26 @@ function escName(n: string): string {
   return n.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-export function workbookToEnvelope(wb: WorkbookData, rename?: (n: string) => string): string {
-  return wb.sheets.map((s) => `<sheet name="${escName(rename ? rename(s.name) : s.name)}">\n${sheetToCsv(s)}</sheet>`).join('\n\n');
+/**
+ * Envelope in the shape LD-09 observed: `<sheet name="X">\n` rows `\n</sheet>`, sheets separated by a blank line.
+ * `shapeCsv` lets a mock scenario alter the CSV text (for example to duplicate rows).
+ */
+export function workbookToEnvelope(wb: WorkbookData, rename?: (n: string) => string, shapeCsv?: (csv: string) => string): string {
+  return wb.sheets
+    .map((s) => {
+      const csv = sheetToCsv(s);
+      return `<sheet name="${escName(rename ? rename(s.name) : s.name)}">\n${shapeCsv ? shapeCsv(csv) : csv}</sheet>`;
+    })
+    .join('\n\n');
+}
+
+function mapCells(wb: WorkbookData, f: (v: SheetData['cells'][string]) => SheetData['cells'][string]): WorkbookData {
+  return { ...wb, sheets: wb.sheets.map((s) => ({ ...s, cells: Object.fromEntries(Object.entries(s.cells).map(([k, v]) => [k, f(v)])) })) };
+}
+
+/** Keep only column A so every row lacks its adjacent value. */
+function keepFirstColumn(wb: WorkbookData): WorkbookData {
+  return { ...wb, sheets: wb.sheets.map((s) => ({ ...s, cells: Object.fromEntries(Object.entries(s.cells).filter(([k]) => parseAddress(k)?.col === 1)) })) };
 }
 
 /** Tiny sanitized workbook used when no local workbook has been imported. Contains no real data. */
@@ -113,8 +133,14 @@ export function buildMockResults(entries: readonly ManifestEntry[], wb: Workbook
       case 'missing-worksheet':
         base.content = workbookToEnvelope(wb, (n) => `${n} (renamed)`);
         break;
-      case 'missing-cell':
-        base.content = wb.sheets.map((s) => `<sheet name="${escName(s.name)}">\n</sheet>`).join('\n');
+      case 'label-not-found':
+        base.content = workbookToEnvelope(mapCells(wb, (v) => (typeof v === 'string' ? ` (renamed)` : v)));
+        break;
+      case 'duplicate-label':
+        base.content = workbookToEnvelope(wb, undefined, (csv) => csv + csv);
+        break;
+      case 'missing-value':
+        base.content = workbookToEnvelope(keepFirstColumn(wb));
         break;
       case 'malformed':
         base.content = '<sheet name="Summary">unterminated';

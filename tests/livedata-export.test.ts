@@ -10,6 +10,7 @@ import { emptyProject, parseProject } from '../src/core/project';
 import { BASELINE_TEMPLATE_NAME, buildBaselineProject } from '../src/core/templates/baseline';
 import { ValidationReportSchema, createTenantTestExport } from '../src/core/tenant/report';
 import { scanExport, validateHtml, validateProject } from '../src/core/validate';
+import { defaultLabelAdjacent } from '../src/core/livedata/selector';
 import { FIXTURE_ITEM_URL, fixtureLiveKpi, fixtureSource, liveProject } from './livedataFixtures';
 
 const CTX = { exportedAt: '2026-01-02T03:04:05.000Z', studioBuild: '0.2.0+test' };
@@ -96,7 +97,7 @@ describe('Interactive Safe profile', () => {
     expect(k).toContain('aria-labelledby="sphs-k1-label"');
     expect(k).toContain('data-sphs-source="0"');
     expect(k).toContain('data-sphs-sheet="Summary"');
-    expect(k).toContain('data-sphs-cell="B7"');
+    expect(k).toContain('data-sphs-selector="label-adjacent" data-sphs-label="Open issues" data-sphs-match-col="0" data-sphs-value-offset="1"');
     expect(k).toContain('class="sphs-live__refresh" hidden>Refresh data</button>');
     expect(k).toContain('role="status" aria-live="polite"');
     expect(k).toContain('Recent workbook changes may take time to appear.');
@@ -124,7 +125,7 @@ describe('Interactive Safe profile', () => {
   it('only emits sources that a KPI uses, deduplicated', () => {
     const two = liveProject({
       sources: [fixtureSource({ id: 'src1' }), fixtureSource({ id: 'src2', spItemUrl: FIXTURE_ITEM_URL.replace('0001', '0002') }), fixtureSource({ id: 'unused', spItemUrl: FIXTURE_ITEM_URL.replace('0001', '0003') })],
-      kpis: [fixtureLiveKpi({ id: 'a', sourceId: 'src1' }), fixtureLiveKpi({ id: 'b', sourceId: 'src1', cell: 'B8' }), fixtureLiveKpi({ id: 'c', sourceId: 'src2' })],
+      kpis: [fixtureLiveKpi({ id: 'a', sourceId: 'src1' }), fixtureLiveKpi({ id: 'b', sourceId: 'src1', worksheet: 'Other' }), fixtureLiveKpi({ id: 'c', sourceId: 'src2' })],
     });
     const out = renderPage(two, CTX);
     const m = JSON.parse(/ka-livedata-manifest">([\s\S]*?)<\/script>/.exec(out)![1]!);
@@ -203,28 +204,19 @@ describe('project validation for Live Excel', () => {
     expect(byCode['live-experimental']?.message).toContain('undocumented behavior observed in a specific SharePoint Online tenant');
     expect(byCode['live-permissions']?.message).toContain('LD-07');
   });
-  it('LD-09: blocks every Live KPI because A1 addressing of live data is disabled', () => {
-    const issues = validateProject(liveProject(), { liveEnabled: true });
-    const blocked = issues.filter((i) => i.code === 'live-addressing-disabled');
-    expect(blocked.length).toBeGreaterThan(0);
-    expect(blocked.every((i) => i.severity === 'error' && i.message.includes('does not keep leading blank rows'))).toBe(true);
-    expect(sharePointExcelLiveProvider.validate({ source: fixtureSource(), selection: { worksheet: 'Summary', selection: { type: 'cell', address: 'B7' } } }).map((i) => i.code)).toContain('addressing-disabled');
+  it('LD-09: no positional selection exists; the provider validates the semantic selector', () => {
+    const cfg = { source: fixtureSource(), selection: { worksheet: 'Summary', selection: defaultLabelAdjacent('Open issues') } };
+    expect(sharePointExcelLiveProvider.validate(cfg).filter((i) => i.severity === 'error')).toEqual([]);
+    expect(sharePointExcelLiveProvider.validate({ ...cfg, selection: { worksheet: 'Summary', selection: defaultLabelAdjacent('') } }).map((i) => i.code)).toContain('label-empty');
+    expect(sharePointExcelLiveProvider.validate({ ...cfg, selection: { worksheet: 'Summary', selection: { type: 'deprecated-cell', address: 'B7' } } }).map((i) => i.code)).toContain('selector-unsupported');
   });
-  it('reports missing sources, bad cells and unsafe source configuration', () => {
+  it('reports missing sources, bad selectors and unsafe source configuration', () => {
     expect(codes(liveProject({ kpis: [fixtureLiveKpi({ sourceId: 'missing' })] }))).toContain('live-source-missing');
-    expect(codes(liveProject({ kpis: [fixtureLiveKpi({ cell: 'A1:B2' })] }))).toContain('live-cell');
+    expect(codes(liveProject({ kpis: [fixtureLiveKpi({ selector: defaultLabelAdjacent('') })] }))).toContain('live-selector-label-empty');
     expect(codes(liveProject({ kpis: [fixtureLiveKpi({ worksheet: ' ' })] }))).toContain('live-worksheet');
     expect(codes(liveProject({ sources: [fixtureSource({ spItemUrl: 'javascript:alert(1)' })] }))).toContain('live-source-item-url-scheme');
     expect(codes(liveProject({ sources: [fixtureSource({ acknowledgedExperimental: false })] }))).toContain('live-source-not-acknowledged');
     expect(codes(liveProject({ kpis: [fixtureLiveKpi({ warnAt: 10, criticalAt: 5 })] }))).toContain('live-thresholds');
-  });
-  it('rejects bad cell addresses at the schema level', () => {
-    const p = liveProject();
-    const raw = JSON.parse(JSON.stringify(p));
-    raw.page.components[1].cell = 'B7:C9';
-    expect(parseProject(raw).ok).toBe(false);
-    raw.page.components[1].cell = 'B7';
-    expect(parseProject(raw).ok).toBe(true);
   });
 });
 
@@ -233,8 +225,7 @@ describe('tenant test export report for LiveData', () => {
     const p = liveProject({ sources: [fixtureSource({ cslViewLink: 'https://h.example/:x:/s/p' })], kpis: [fixtureLiveKpi({ fallback: { value: '12' } })] });
     const t = await createTenantTestExport(p, CTX, { liveEnabled: true });
     expect(ValidationReportSchema.safeParse(t.report).success).toBe(true);
-    // LD-09: the only validation error left is the disabled A1 addressing (the export is blocked, by design).
-    expect(t.report.validation.issues.filter((i) => i.severity === 'error').map((i) => i.code)).toEqual(['live-addressing-disabled']);
+    expect(t.report.validation.errorCount).toBe(0);
     expect(t.report.exportProfile).toBe('interactive-safe');
     expect(t.report.html.csp).toBe(INTERACTIVE_CSP);
     expect(t.report.liveData).toMatchObject({
@@ -268,7 +259,7 @@ describe('tenant test export report for LiveData', () => {
 });
 
 describe('SharePointExcelLive provider', () => {
-  const config = { source: fixtureSource(), selection: { worksheet: 'Summary', selection: { type: 'cell' as const, address: 'B7' } } };
+  const config = { source: fixtureSource(), selection: { worksheet: 'Summary', selection: defaultLabelAdjacent('Open issues') } };
   it('is classified experimental with the observed contract revision and reproduced evidence', () => {
     expect(sharePointExcelLiveProvider.capability).toBe('experimental');
     expect(sharePointExcelLiveProvider.contractRevision).toBe('observed-2026-11-r1');
@@ -276,10 +267,10 @@ describe('SharePointExcelLive provider', () => {
     expect(sharePointExcelLiveProvider.warning).toContain('undocumented behavior observed in a specific SharePoint Online tenant');
   });
   it('validates transport and selection separately', () => {
-    // Transport and selection shape are valid; the only error is the disabled A1 addressing (LD-09).
-    expect(sharePointExcelLiveProvider.validate(config).filter((i) => i.severity === 'error').map((i) => i.code)).toEqual(['addressing-disabled']);
-    expect(sharePointExcelLiveProvider.validate({ ...config, selection: { worksheet: ' ', selection: { type: 'cell', address: 'B7' } } }).map((i) => i.code)).toContain('worksheet-missing');
-    expect(sharePointExcelLiveProvider.validate({ ...config, selection: { worksheet: 'S', selection: { type: 'cell', address: 'A1:B2' } } }).map((i) => i.code)).toContain('cell-invalid');
+    // Transport and selection are valid.
+    expect(sharePointExcelLiveProvider.validate(config).filter((i) => i.severity === 'error')).toEqual([]);
+    expect(sharePointExcelLiveProvider.validate({ ...config, selection: { worksheet: ' ', selection: defaultLabelAdjacent('x') } }).map((i) => i.code)).toContain('worksheet-missing');
+    expect(sharePointExcelLiveProvider.validate({ ...config, selection: { worksheet: 'S', selection: { ...defaultLabelAdjacent('x'), valueOffset: 0 } } }).map((i) => i.code)).toContain('value-offset-invalid');
     expect(sharePointExcelLiveProvider.validate({ ...config, source: fixtureSource({ spItemUrl: '' }) }).map((i) => i.code)).toContain('item-url-missing');
   });
   it('compiles only the evidenced manifest fields', () => {

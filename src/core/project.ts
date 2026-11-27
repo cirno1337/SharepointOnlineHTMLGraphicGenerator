@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { MAX_LIVE_SOURCES } from './livedata/constants';
-import { LiveCellAddressSchema, LiveSourceSchema } from './livedata/source';
+import { defaultLabelAdjacent, LiveSelectorSchema } from './livedata/selector';
+import { LiveSourceSchema } from './livedata/source';
 
 /** A scalar spreadsheet value after sanitising. Dates are ISO strings; formulas are cached results. */
 export const CellValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
@@ -85,7 +86,7 @@ export const ComponentSchema = z.discriminatedUnion('type', [
     label: text(200),
     sourceId: z.string().max(64),
     worksheet: text(255),
-    cell: LiveCellAddressSchema,
+    selector: LiveSelectorSchema,
     prefix: text(20).default(''),
     suffix: text(20).default(''),
     numberFormat: z.enum(['auto', 'integer', 'decimal1', 'decimal2']).default('auto'),
@@ -162,7 +163,7 @@ export function newComponent(type: ComponentType): Component {
         label: 'Live metric',
         sourceId: '',
         worksheet: 'Summary',
-        cell: 'B7',
+        selector: defaultLabelAdjacent(''),
         prefix: '',
         suffix: '',
         numberFormat: 'auto',
@@ -174,8 +175,32 @@ export function newComponent(type: ComponentType): Component {
   }
 }
 
-export function parseProject(json: unknown): { ok: true; project: Project } | { ok: false; error: string } {
-  const r = ProjectSchema.safeParse(json);
-  if (r.success) return { ok: true, project: r.data };
+/**
+ * Projects saved before LD-09 stored a Live KPI position as `cell` (an Excel A1 address). That selection is
+ * unsupported. Such a component is loaded with the explicit `deprecated-cell` selector so nothing is lost, it is
+ * reported as a warning, and it stays blocked from export. It is NEVER converted into another selector: the author
+ * must choose and configure a label selector manually. No schema version change is needed.
+ */
+export const LEGACY_CELL_NOTICE = 'This Live KPI came from an older project that selected a cell by its Excel address, which is no longer supported. It stays blocked from export until you choose “Row label + adjacent value”.';
+
+function migrateLegacyLiveKpis(json: unknown): { json: unknown; legacyComponentIds: string[] } {
+  const ids: string[] = [];
+  const page = (json as { page?: { components?: unknown } } | null)?.page;
+  if (!page || !Array.isArray(page.components)) return { json, legacyComponentIds: ids };
+  const components = page.components.map((c) => {
+    if (c && typeof c === 'object' && (c as { type?: unknown }).type === 'liveKpi' && !('selector' in c) && typeof (c as { cell?: unknown }).cell === 'string') {
+      const { cell, ...rest } = c as Record<string, unknown> & { cell: string };
+      if (typeof rest.id === 'string') ids.push(rest.id);
+      return { ...rest, selector: { type: 'deprecated-cell', address: cell.slice(0, 40) } };
+    }
+    return c;
+  });
+  return { json: { ...(json as object), page: { ...page, components } }, legacyComponentIds: ids };
+}
+
+export function parseProject(json: unknown): { ok: true; project: Project; legacyComponentIds: string[] } | { ok: false; error: string } {
+  const migrated = migrateLegacyLiveKpis(json);
+  const r = ProjectSchema.safeParse(migrated.json);
+  if (r.success) return { ok: true, project: r.data, legacyComponentIds: migrated.legacyComponentIds };
   return { ok: false, error: r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).slice(0, 5).join('; ') };
 }

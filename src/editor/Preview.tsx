@@ -16,7 +16,7 @@ export function Preview({ html, interactive = false, mockScript = null }: Props)
       <h2 id="preview-h">Preview</h2>
       {interactive && (
         <p className="banner ok" data-testid="mock-banner">
-          <strong>Mock LiveData preview.</strong> Not connected to SharePoint: the values below come from sanitized fixture data or a workbook you imported locally. No network requests are made.
+          <strong>Mock LiveData preview based on an observed SharePoint payload.</strong> Not connected to SharePoint: the values below come from sanitized fixture data or a workbook you imported locally, shaped like the trimmed data seen in one tenant (LD-09). No network requests are made.
         </p>
       )}
       <iframe title="Exported page preview" sandbox={interactive ? 'allow-scripts' : ''} srcDoc={doc} />

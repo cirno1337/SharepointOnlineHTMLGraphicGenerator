@@ -2,6 +2,7 @@ import vm from 'node:vm';
 import { LIVEDATA_CONTRACT_REVISION } from '../src/core/livedata/constants';
 import type { LiveSource } from '../src/core/livedata/source';
 import { RUNTIME_SOURCE } from '../src/core/livedata/runtime';
+import { defaultLabelAdjacent, type LabelAdjacentSelector } from '../src/core/livedata/selector';
 import { emptyProject, newComponent, type Component, type Project } from '../src/core/project';
 
 /** Synthetic item URL: reserved .example host, fake identifiers. Never a real tenant value. */
@@ -24,7 +25,7 @@ export function fixtureSource(over: Partial<LiveSource> = {}): LiveSource {
 type LiveKpi = Extract<Component, { type: 'liveKpi' }>;
 export function fixtureLiveKpi(over: Partial<LiveKpi> = {}): LiveKpi {
   const base = newComponent('liveKpi') as LiveKpi;
-  return { ...base, id: 'k1', label: 'Open issues', sourceId: 'src1', worksheet: 'Summary', cell: 'B7', ...over };
+  return { ...base, id: 'k1', label: 'Open issues', sourceId: 'src1', worksheet: 'Summary', selector: defaultLabelAdjacent('Open issues'), ...over };
 }
 
 export function liveProject(opts: { sources?: LiveSource[]; kpis?: LiveKpi[]; profile?: Project['page']['exportProfile'] } = {}): Project {
@@ -39,8 +40,9 @@ export interface RuntimeCore {
   LIMITS: Record<string, number>;
   parseEnvelope(content: unknown): { ok: boolean; code?: string; sheets?: { name: string; csv: string }[] };
   parseCsv(text: unknown): { ok: boolean; code?: string; rows?: string[][] };
-  parseCell(a: unknown): { col: number; row: number } | null;
-  readCell(sheets: { name: string; csv: string }[], ws: string, addr: string): { ok: boolean; code?: string; value?: string; empty?: boolean };
+  normLabel(s: string, trim: boolean, caseSensitive: boolean): string;
+  checkSelector(sel: unknown): { ok: false; code: string } | null;
+  selectLabelAdjacent(rows: string[][], sel: unknown): { ok: boolean; code?: string; value?: string; empty?: boolean };
   resolveKpi(cfg: Cfg, manifest: unknown, results: unknown): { ok: boolean; code?: string; value?: string; empty?: boolean; ref?: string; hostCode?: string; hostFormat?: string };
   present(cfg: Cfg, res: ReturnType<RuntimeCore['resolveKpi']>, loadedAt: string): Vm;
   formatValue(raw: string, fmt: string): string;
@@ -49,7 +51,7 @@ export interface RuntimeCore {
 export interface Cfg {
   source: number;
   sheet: string;
-  cell: string;
+  selector: LabelAdjacentSelector | { type: 'unsupported' };
   format: string;
   prefix: string;
   suffix: string;
@@ -77,7 +79,7 @@ export interface Vm {
 export const baseCfg: Cfg = {
   source: 0,
   sheet: 'Summary',
-  cell: 'B7',
+  selector: defaultLabelAdjacent('Open issues'),
   format: 'auto',
   prefix: '',
   suffix: '',

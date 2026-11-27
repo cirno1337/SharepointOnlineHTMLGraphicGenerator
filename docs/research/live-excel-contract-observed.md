@@ -120,3 +120,25 @@ window.__LD_RESULTS__ = { "<spItemUrl>": { "content": "<sheet name=\"Summary\">\
 - Show "Loaded from SharePoint at {time}" and the hint "Recent workbook changes may take time to appear."; never call the data real-time.
 - A1 addressing of live data is disabled (LD-09 disproved positional rows; D-020). Use Excel Snapshot for cell-addressed values.
 - Studio's runtime must be validated in a controlled tenant test (LD-10) before any pilot; LD-10 now needs a selector that does not depend on Excel coordinates.
+
+## 21. Selection: `label-adjacent` (derived design, not an observed contract)
+
+Evidence class of the **selector**: a design DERIVED from one `TENANT_OBSERVED_ONCE` observation (LD-09). It is **not** Microsoft-documented, **not** guaranteed SharePoint behavior and **not** equivalent to Excel row or cell coordinates. It only reads the trimmed CSV grid exactly as LD-09 delivered it:
+
+```
+Summary block text:           parsed rows:
+Open issues,23                ["Open issues","23"]
+Doubled,46                    ["Doubled","46"]
+
+selector {label:"Open issues", matchColumn:0, valueOffset:1}  ->  "23"
+```
+
+Semantics (implemented once, in the exported runtime; the editor preview runs the same code):
+1. Only column `matchColumn` (zero-based; shown to users as Column 1, 2, ...) of each row is compared.
+2. Both sides are normalised: Unicode NFC, then optional trim (JavaScript `trim`), then optional `toLowerCase` (locale-independent; **not** full Unicode case folding, so `STRASSE` does not match `straße`, and a Greek final sigma can differ). No punctuation or diacritic removal, no interior-whitespace collapsing, no numeric coercion, no fuzzy or regex matching.
+3. `valueColumn = matchColumn + valueOffset`; `valueOffset` is a non-zero integer and the value column must be at least 0.
+4. Exactly one matching row is required. Several matches return `ambiguous-label`; the first match is never returned.
+5. Failure codes: `selector-unsupported`, `label-empty`, `label-too-long` (more than 255 characters), `match-column-invalid` (not an integer in 0..499), `value-offset-invalid` (0, more than 499 in magnitude, or before column 1), `label-not-found`, `ambiguous-label`, `adjacent-value-missing` (row shorter than the value column), `adjacent-value-empty` (empty or whitespace-only value, unless `allowEmptyValue`).
+6. The returned text is never altered, interpreted as HTML, a formula or a URL; number formatting applies only after selection.
+
+**Unobserved and therefore untrusted:** whether leading blank *columns* are trimmed (so "Column 1" may not be Excel column A), interior blank rows, merged cells, hidden rows, tables, formatted numbers and dates, large sheets. Authors must not treat `matchColumn` as an Excel column letter.

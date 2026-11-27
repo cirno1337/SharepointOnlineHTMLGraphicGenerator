@@ -2,36 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { generatedRuntimeModule } from '../scripts/make-runtime';
 import { MANIFEST_FIELD_EVIDENCE } from '../src/core/livedata/constants';
+import { defaultLabelAdjacent } from '../src/core/livedata/selector';
 import { compileManifest, safeJsonForScript } from '../src/core/livedata/manifest';
 import { buildMockResults, mockFixtureWorkbook, sheetToCsv, workbookToEnvelope } from '../src/core/livedata/mock';
 import { RUNTIME_SOURCE } from '../src/core/livedata/runtime';
-import { maskIdentifier, parseLiveCellAddress, parseSpItemUrl, sanitizedDiagnostic, validateLiveSourceShape } from '../src/core/livedata/source';
-import { FIXTURE_ITEM_URL, FIXTURE_ITEM_URL_2, OBSERVED_LD09_CONTENT, OBSERVED_LD09_RESULT, SUMMARY_CSV, baseCfg, envelope, fixtureSource, loadRuntimeCore, plain } from './livedataFixtures';
+import { maskIdentifier, parseSpItemUrl, sanitizedDiagnostic, validateLiveSourceShape } from '../src/core/livedata/source';
+import { FIXTURE_ITEM_URL, FIXTURE_ITEM_URL_2, OBSERVED_LD09_RESULT, SUMMARY_CSV, baseCfg, envelope, fixtureSource, loadRuntimeCore, plain } from './livedataFixtures';
 
 const { core, touched } = loadRuntimeCore();
-
-describe('single-cell A1 addresses (TypeScript validator and exported runtime agree)', () => {
-  const valid = ['A1', 'B7', 'AA10', 'Z99', 'XFD1048576'];
-  const invalid = ['', 'A0', '0A', 'A', '1', 'A:A', '1:1', 'A1:B2', 'Summary!B7', '=A1', 'a1', 'XFE1', 'A1048577', 'AAAA1', ' B7', 'B7 ', '$B$7', 'B-7', 'B7;'];
-  it.each(valid)('accepts %s', (a) => {
-    expect(parseLiveCellAddress(a)).not.toBeNull();
-    expect(core.parseCell(a)).not.toBeNull();
-  });
-  it.each(invalid)('rejects %j', (a) => {
-    expect(parseLiveCellAddress(a)).toBeNull();
-    expect(core.parseCell(a)).toBeNull();
-  });
-  it('converts columns and rows correctly', () => {
-    expect(plain(core.parseCell('A1'))).toEqual({ col: 0, row: 0 });
-    expect(plain(core.parseCell('B7'))).toEqual({ col: 1, row: 6 });
-    expect(plain(core.parseCell('AA10'))).toEqual({ col: 26, row: 9 });
-    expect(parseLiveCellAddress('AA10')).toEqual({ col: 27, row: 10 });
-  });
-  it('rejects non-strings', () => {
-    expect(core.parseCell(undefined)).toBeNull();
-    expect(core.parseCell(7)).toBeNull();
-  });
-});
 
 describe('source configuration validation', () => {
   const errs = (over = {}) => validateLiveSourceShape(fixtureSource(over)).filter((p) => p.severity === 'error').map((p) => p.code);
@@ -194,82 +172,36 @@ describe('RFC 4180 CSV parser', () => {
   });
 });
 
-describe('cell selection', () => {
-  const sheets = () => plain(core.parseEnvelope(envelope({ Summary: SUMMARY_CSV, Wide: `${','.repeat(26)}deep\n`.repeat(10), Dup: 'first\n' }) + '<sheet name="dup">\nsecond\n</sheet>')).sheets!;
-  it('LD-09 regression: Excel B7 is NOT CSV row 7, because the host drops leading blank rows', () => {
-    const s = plain(core.parseEnvelope(OBSERVED_LD09_CONTENT)).sheets!;
-    // Excel Summary!A7 / B7 / B8 arrive as CSV rows 1 and 2.
-    expect(plain(core.readCell(s, 'Summary', 'A1')).value).toBe('Open issues');
-    expect(plain(core.readCell(s, 'Summary', 'B1')).value).toBe('23');
-    expect(plain(core.readCell(s, 'Summary', 'B2')).value).toBe('46');
-    // A positional Excel read of B7 finds nothing; the grid has only two rows. Studio must never guess.
-    expect(plain(core.readCell(s, 'Summary', 'B7')).code).toBe('cell-not-found');
-    expect(plain(core.readCell(s, 'Summary', 'B8')).code).toBe('cell-not-found');
-  });
-  it('parses the exact observed envelope framing (line breaks, blank line between sheets)', () => {
-    const s = plain(core.parseEnvelope(OBSERVED_LD09_CONTENT)).sheets!;
-    expect(s.map((x: { name: string }) => x.name)).toEqual(['Summary', 'Issues']);
-    expect(plain(core.readCell(s, 'Issues', 'A1')).value).toBe('Title');
-    expect(plain(core.readCell(s, 'Issues', 'E4')).value).toBe('Low');
-  });
-  it('reads grid positions within the CSV (not Excel addresses)', () => {
-    expect(plain(core.readCell(sheets(), 'Wide', 'AA10')).value).toBe('deep');
-    expect(plain(core.readCell(sheets(), 'Summary', 'A1'))).toEqual({ ok: true, value: 'Open issues', empty: false });
-  });
-  it('reports a missing worksheet, a missing cell and bad addresses distinctly', () => {
-    expect(plain(core.readCell(sheets(), 'Nope', 'B7')).code).toBe('worksheet-not-found');
-    expect(plain(core.readCell(sheets(), 'Summary', 'B99')).code).toBe('cell-not-found');
-    expect(plain(core.readCell(sheets(), 'Summary', 'ZZ3')).code).toBe('cell-not-found');
-    for (const bad of ['', 'A0', 'A1:B2', 'B:B', 'Summary!B7', '=B7']) expect(plain(core.readCell(sheets(), 'Summary', bad)).code).toBe('bad-address');
-  });
-  it('matches worksheets by trimmed, case-insensitive name; duplicates resolve to the first sheet', () => {
-    expect(plain(core.readCell(sheets(), '  summary ', 'B1')).value).toBe('17');
-    expect(plain(core.readCell(sheets(), 'DUP', 'A1')).value).toBe('first');
-  });
-  it('reports a malformed worksheet only for the component that reads it', () => {
-    const s = plain(core.parseEnvelope(envelope({ Good: 'a\n', Bad: 'x,"unterminated\n' }))).sheets!;
-    expect(plain(core.readCell(s, 'Good', 'A1')).value).toBe('a');
-    expect(plain(core.readCell(s, 'Bad', 'A1')).code).toBe('malformed');
-  });
-  it('returns hostile cell content verbatim as a string (rendering uses textContent)', () => {
-    const csv = '"<img src=x onerror=alert(1)>"\n"=HYPERLINK(""javascript:alert(1)"")"\n</script><script>alert(1)\n';
-    const s = plain(core.parseEnvelope(`<sheet name="H">\n${csv}</sheet>`)).sheets!;
-    expect(plain(core.readCell(s, 'H', 'A1')).value).toBe('<img src=x onerror=alert(1)>');
-    expect(plain(core.readCell(s, 'H', 'A2')).value).toBe('=HYPERLINK("javascript:alert(1)")');
-  });
-});
-
 describe('KPI resolution and presentation states', () => {
   const manifest = [{ spItemUrl: FIXTURE_ITEM_URL, fileName: 'status.xlsx' }];
   const okResults = { [FIXTURE_ITEM_URL]: { content: envelope({ Summary: SUMMARY_CSV }), format: 'xlsx-sheets', metadata: null, error: null, errorCode: null } };
   // Pass results explicitly (even undefined); only a call with no second argument uses the OK data.
   const run = (cfg = baseCfg, ...rest: [unknown?]) => plain(core.present(cfg, core.resolveKpi(cfg, manifest, rest.length === 0 ? okResults : rest[0]), '10:00:00'));
-
-  // Cell selection is disabled (LD-09), so resolveKpi can no longer produce a live value. The presentation
-  // layer is still tested directly with a synthetic successful resolution, for when a verified selector exists.
   const live = (cfg = baseCfg, value = '17', empty = false) => plain(core.present(cfg, { ok: true, value, empty, ref: 'ref-00000000' }, '10:00:00'));
+  const withLabel = (label: string, extra: Record<string, unknown> = {}) => ({ ...baseCfg, selector: { ...defaultLabelAdjacent(label), ...extra } as typeof baseCfg.selector });
 
-  it('A1 selection is disabled: a well-formed Excel address never yields a live value', () => {
-    for (const cell of ['B7', 'A1', 'B1']) {
-      const vm = run({ ...baseCfg, cell });
-      expect(vm).toMatchObject({ mode: 'error', code: 'addressing-unsupported', value: '', message: 'Selecting a cell from live data is not supported.' });
-    }
+  it('LIVE: the observed payload resolves Open issues to 23 and Doubled to 46, with a "Loaded from SharePoint at" time', () => {
     const observed = { [FIXTURE_ITEM_URL]: OBSERVED_LD09_RESULT };
-    expect(run(baseCfg, observed)).toMatchObject({ mode: 'error', code: 'addressing-unsupported', value: '' });
-    expect(run({ ...baseCfg, fallbackValue: '99', fallbackAt: 'T' }, observed)).toMatchObject({ mode: 'fallback', badge: 'Snapshot fallback', value: '99' });
+    expect(run(baseCfg, observed)).toMatchObject({ mode: 'live', value: '23', meta: 'Loaded from SharePoint at 10:00:00', badge: '' });
+    expect(run(withLabel('Doubled'), observed)).toMatchObject({ mode: 'live', value: '46' });
+    expect(run({ ...baseCfg, fallbackValue: '99', fallbackAt: '2026-01-01' }, observed)).toMatchObject({ mode: 'live', value: '23', badge: '' });
+    expect(run().value).toBe('17'); // the synthetic fixture
   });
-  it('LIVE presentation: shows the value and a "Loaded from SharePoint at" time, never a fallback', () => {
+  it('LIVE presentation: never a fallback, never "real-time"', () => {
     const vm = live({ ...baseCfg, fallbackValue: '99', fallbackAt: '2026-01-01' });
     expect(vm).toMatchObject({ mode: 'live', value: '17', meta: 'Loaded from SharePoint at 10:00:00', badge: '' });
     expect(vm.meta).not.toMatch(/last updated|real-time/i);
   });
-  it('applies prefix, suffix, number formats and the empty-state text', () => {
-    expect(live({ ...baseCfg, prefix: '\u20ac', suffix: ' items' }).value).toBe('\u20ac17 items');
+  it('applies prefix, suffix, number formats and the empty-state text only after selection', () => {
+    expect(live({ ...baseCfg, prefix: '€', suffix: ' items' }).value).toBe('€17 items');
     expect(live({ ...baseCfg, format: 'decimal2' }).value).toBe('17.00');
     expect(core.formatValue('17.5', 'integer')).toBe('18');
     expect(core.formatValue('text', 'integer')).toBe('text');
     expect(live({ ...baseCfg, emptyText: 'Nothing' }, '', true).value).toBe('Nothing');
     expect(live({ ...baseCfg, showLoadedAt: false }).meta).toBe('');
+    // end to end: selection first, then formatting
+    const observed = { [FIXTURE_ITEM_URL]: OBSERVED_LD09_RESULT };
+    expect(run({ ...baseCfg, prefix: '#', format: 'decimal1' }, observed).value).toBe('#23.0');
   });
   it('flags thresholds with text, not only colour', () => {
     expect(live({ ...baseCfg, warnAt: 10 }).status).toBe('warning');
@@ -295,11 +227,11 @@ describe('KPI resolution and presentation states', () => {
     for (const leak of ['Secret tenant', 'tenant-a.example', 'FIXTURE', '<b>', '!']) expect(vm.diag + vm.message).not.toContain(leak);
     expect(vm.diag).toMatch(/source 1 ref-[0-9a-f]{8}/);
   });
-  it('shows a labelled snapshot fallback for host errors, bad data and missing cells', () => {
+  it('shows a labelled snapshot fallback for host errors, bad data and selection failures', () => {
     const cfg = { ...baseCfg, fallbackValue: '12', fallbackAt: 'T' };
     const err = { [FIXTURE_ITEM_URL]: { content: null, format: null, error: 'x', errorCode: 'e' } };
     expect(run(cfg, err)).toMatchObject({ mode: 'fallback', badge: 'Snapshot fallback' });
-    expect(run({ ...cfg, cell: 'Z99' })).toMatchObject({ mode: 'fallback', code: 'addressing-unsupported' });
+    expect(run({ ...cfg, selector: defaultLabelAdjacent('Nope') })).toMatchObject({ mode: 'fallback', code: 'label-not-found', badge: 'Snapshot fallback' });
     expect(run({ ...cfg, sheet: 'Nope' })).toMatchObject({ mode: 'fallback', code: 'worksheet-not-found' });
   });
   it('maps every failure to a distinct, friendly state', () => {
@@ -310,21 +242,22 @@ describe('KPI resolution and presentation states', () => {
     expect(r({ content: '<sheet name="S">x', format: 'xlsx-sheets' }).code).toBe('malformed');
     expect(r({ content: envelope({ Summary: SUMMARY_CSV }), format: 'rows' })).toMatchObject({ code: 'unsupported-format', diag: expect.stringContaining('format rows') });
     expect(r({ content: envelope({ Summary: SUMMARY_CSV }), format: undefined }).code).toBe('unsupported-format');
-    expect(run({ ...baseCfg, cell: 'A0' }).code).toBe('addressing-unsupported');
     expect(run({ ...baseCfg, source: 5 }).code).toBe('source-config');
     expect(plain(core.present(baseCfg, core.resolveKpi(baseCfg, null, okResults), 'x')).code).toBe('source-config');
   });
   it('lets a component override the generic error text but never the editor message', () => {
-    expect(run({ ...baseCfg, errorText: 'Custom error', cell: 'Z99' }).message).toBe('Custom error');
+    expect(run({ ...baseCfg, errorText: 'Custom error', selector: defaultLabelAdjacent('Nope') }).message).toBe('Custom error');
     expect(run({ ...baseCfg, errorText: 'Custom error' }, undefined).message).toContain('SharePoint editor');
   });
-  it('isolates components: one broken source or cell does not affect another', () => {
+  it('isolates components: one broken source or selector does not affect another', () => {
     const results = { ...okResults, [FIXTURE_ITEM_URL_2]: { content: '<sheet name="S">x', format: 'xlsx-sheets' } };
     const m2 = [...manifest, { spItemUrl: FIXTURE_ITEM_URL_2, fileName: 'b.xlsx' }];
     const good = plain(core.present(baseCfg, core.resolveKpi(baseCfg, m2, results), 't'));
     const bad = plain(core.present({ ...baseCfg, source: 1 }, core.resolveKpi({ ...baseCfg, source: 1 }, m2, results), 't'));
-    expect(good).toMatchObject({ mode: 'error', code: 'addressing-unsupported' });
+    const wrongLabel = plain(core.present(withLabel('Nope'), core.resolveKpi(withLabel('Nope'), m2, results), 't'));
+    expect(good).toMatchObject({ mode: 'live', value: '17' });
     expect(bad).toMatchObject({ mode: 'error', code: 'malformed' });
+    expect(wrongLabel).toMatchObject({ mode: 'error', code: 'label-not-found' });
   });
   it('treats prototype-pollution style keys and inherited properties as absent', () => {
     const cfg = baseCfg;
@@ -355,13 +288,19 @@ describe('mock LiveData preview adapter round-trips through the real parser', ()
     expect(sheetToCsv(wb.sheets[0]!)).toBe('Open issues,17\nDoubled,34\n');
     expect(workbookToEnvelope(wb)).toContain('<sheet name="Summary">\nOpen issues,17\nDoubled,34\n</sheet>\n\n<sheet name="Issues">');
     expect(sheetToCsv({ name: 'E', cells: {}, maxRow: 0, maxCol: 0 })).toBe('');
-    expect(resolve('ok')).toMatchObject({ mode: 'error', code: 'addressing-unsupported' });
+  });
+  it('the mock proves the label-adjacent selector: Open issues -> 17, Doubled -> 34', () => {
+    expect(resolve('ok')).toMatchObject({ mode: 'live', value: '17' });
+    expect(resolve('ok', { ...baseCfg, selector: defaultLabelAdjacent('Doubled') }).value).toBe('34');
+    expect(resolve('ok', { ...baseCfg, sheet: 'Issues', selector: defaultLabelAdjacent('Example, with comma') }).value).toBe('Open');
   });
   it('produces each failure scenario with the expected state', () => {
     expect(resolve('missing').code).toBe('no-prefetch');
     expect(resolve('host-error').code).toBe('host-error');
     expect(resolve('missing-worksheet').code).toBe('worksheet-not-found');
-    expect(resolve('missing-cell').code).toBe('addressing-unsupported');
+    expect(resolve('label-not-found')).toMatchObject({ code: 'label-not-found', message: 'No row matched the label ‘Open issues’.' });
+    expect(resolve('duplicate-label')).toMatchObject({ code: 'ambiguous-label', message: 'More than one row matched ‘Open issues’. Use a more specific label.' });
+    expect(resolve('missing-value')).toMatchObject({ code: 'adjacent-value-missing', message: 'The matching row does not contain a value in the configured adjacent column.' });
     expect(resolve('malformed').code).toBe('malformed');
     expect(resolve('unsupported-format').code).toBe('unsupported-format');
     expect(resolve('empty').code).toBe('empty-result');

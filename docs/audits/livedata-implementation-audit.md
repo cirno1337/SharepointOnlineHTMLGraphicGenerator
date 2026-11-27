@@ -52,3 +52,20 @@ Live table/range/chart, multiple-workbook UI, list and CSV sources, source disco
 ## Gates at the time of writing
 
 typecheck, lint, build: pass. Unit tests: 179 pass (65 original + 114 new). Playwright: 16 pass (7 original, 9 LiveData). All run on Windows with Node 26 and the installed Microsoft Edge (`PW_CHROMIUM_PATH`).
+
+## Label-adjacent selector audit (2026-11-27)
+
+Method: adversarial pass after the implementation, aimed at duplicate labels, first-match behavior, Unicode and whitespace, sensitive labels in reports, hostile values, deprecated-selector migration, accidental positional fallback, per-KPI isolation, case-normalization surprises, negative offsets, wide rows, 10,000-row performance and runtime/editor parity. No tenant operations.
+
+| ID | Sev | Finding | Correction |
+|---|---|---|---|
+| S1 | MEDIUM (fixed) | A whitespace-only adjacent value (spaces, NBSP) passed the "empty" check and would have rendered as a blank value presented as live data. | Emptiness is decided on the trimmed text; real values are never altered. Regression tests. |
+| S2 | MEDIUM (fixed) | The numeric editor fields reset to `0` while typing `-`, so a negative value offset could not be entered. | `IntField` keeps the typed text and commits only valid integers; e2e types `-1`. |
+| S3 | MEDIUM (documented, open) | If the host also trims leading blank columns, "Column 1" differs from Excel column A and the mock (which keeps column positions) could disagree with the tenant. | Editor text says the delivered data may omit empty leading columns; LD-11 proposes the layout that settles it. Not fixable locally. |
+| S4 | LOW (documented) | `toLowerCase` is not Unicode case folding (sharp s versus SS, Greek final sigma). | Documented in the contract, the code comment and tests that pin the behavior. |
+| S5 | LOW (documented) | A label containing a NUL character would be altered by the HTML parser (attribute value) and then not match, giving `label-not-found`, not a wrong value. A carriage return in a label is preserved with a character reference. | Harmless failure mode; noted. |
+| S6 | LOW | Row-label uniqueness can change when the workbook changes; the KPI then shows `ambiguous-label` with the labelled fallback if present. | By design; no silent first-match. |
+
+Reviewed and sound (with tests): the first of several matches is never returned; no positional path remains (`readCell` and `parseCell` were removed and a test asserts they do not exist); legacy projects load as `deprecated-cell`, are never converted and stay blocked; reports contain the label length only; hostile labels and values stay inert text (no element, link or script; dollar-pattern strings, U+2028, closing script tags); one failing KPI does not affect another; 10,000 rows resolve well under 500 ms; very wide rows (500 cells) behave; TypeScript and runtime selector validation agree on every case in the parity table.
+
+Unresolved: S3 (leading blank columns), the permission gate LD-07 (still required for any pilot), refresh latency, whether SharePoint preserves the `data-sphs-label` attribute exactly, and Studio's runtime has still never run in a tenant. Readiness: `READY_FOR_CONTROLLED_TENANT_TEST`.

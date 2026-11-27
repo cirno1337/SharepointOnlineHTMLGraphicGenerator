@@ -227,6 +227,102 @@
         },
         "fallbackAvailable": {
           "type": "boolean"
+        },
+        "capability": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "experimental"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "permissionTestOutstanding": {
+          "type": "boolean"
+        },
+        "selectorEvidence": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selectors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "selectorType": {
+                "type": "string"
+              },
+              "worksheet": {
+                "type": "string"
+              },
+              "labelLength": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "matchColumn": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "valueOffset": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "caseSensitive": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "trim": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "snapshotFallbackPresent": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "selectorType",
+              "worksheet",
+              "labelLength",
+              "matchColumn",
+              "valueOffset",
+              "caseSensitive",
+              "trim",
+              "snapshotFallbackPresent"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -240,7 +336,11 @@
         "identifiersInExport",
         "cslViewLinkInExport",
         "explicitSharingDecisionRequired",
-        "fallbackAvailable"
+        "fallbackAvailable",
+        "capability",
+        "permissionTestOutstanding",
+        "selectorEvidence",
+        "selectors"
       ],
       "additionalProperties": false
     },
