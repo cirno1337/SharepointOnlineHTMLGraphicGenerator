@@ -196,13 +196,19 @@ describe('project validation for Live Excel', () => {
     expect(isLiveExcelEnabled({ VITE_EXPERIMENTAL_EXCEL_LIVE: '1' })).toBe(false);
     expect(isLiveExcelEnabled({ VITE_EXPERIMENTAL_EXCEL_LIVE: 'true' })).toBe(true);
   });
-  it('always surfaces the experimental, permission and addressing warnings', () => {
+  it('always surfaces the experimental and permission warnings', () => {
     const issues = validateProject(liveProject(), { liveEnabled: true });
     const byCode = Object.fromEntries(issues.map((i) => [i.code, i]));
     expect(byCode['live-experimental']?.severity).toBe('warning');
     expect(byCode['live-experimental']?.message).toContain('undocumented behavior observed in a specific SharePoint Online tenant');
     expect(byCode['live-permissions']?.message).toContain('LD-07');
-    expect(byCode['live-addressing']?.message).toContain('unverified');
+  });
+  it('LD-09: blocks every Live KPI because A1 addressing of live data is disabled', () => {
+    const issues = validateProject(liveProject(), { liveEnabled: true });
+    const blocked = issues.filter((i) => i.code === 'live-addressing-disabled');
+    expect(blocked.length).toBeGreaterThan(0);
+    expect(blocked.every((i) => i.severity === 'error' && i.message.includes('does not keep leading blank rows'))).toBe(true);
+    expect(sharePointExcelLiveProvider.validate({ source: fixtureSource(), selection: { worksheet: 'Summary', selection: { type: 'cell', address: 'B7' } } }).map((i) => i.code)).toContain('addressing-disabled');
   });
   it('reports missing sources, bad cells and unsafe source configuration', () => {
     expect(codes(liveProject({ kpis: [fixtureLiveKpi({ sourceId: 'missing' })] }))).toContain('live-source-missing');
@@ -227,7 +233,8 @@ describe('tenant test export report for LiveData', () => {
     const p = liveProject({ sources: [fixtureSource({ cslViewLink: 'https://h.example/:x:/s/p' })], kpis: [fixtureLiveKpi({ fallback: { value: '12' } })] });
     const t = await createTenantTestExport(p, CTX, { liveEnabled: true });
     expect(ValidationReportSchema.safeParse(t.report).success).toBe(true);
-    expect(t.report.validation.errorCount).toBe(0);
+    // LD-09: the only validation error left is the disabled A1 addressing (the export is blocked, by design).
+    expect(t.report.validation.issues.filter((i) => i.severity === 'error').map((i) => i.code)).toEqual(['live-addressing-disabled']);
     expect(t.report.exportProfile).toBe('interactive-safe');
     expect(t.report.html.csp).toBe(INTERACTIVE_CSP);
     expect(t.report.liveData).toMatchObject({
@@ -269,7 +276,8 @@ describe('SharePointExcelLive provider', () => {
     expect(sharePointExcelLiveProvider.warning).toContain('undocumented behavior observed in a specific SharePoint Online tenant');
   });
   it('validates transport and selection separately', () => {
-    expect(sharePointExcelLiveProvider.validate(config).filter((i) => i.severity === 'error')).toEqual([]);
+    // Transport and selection shape are valid; the only error is the disabled A1 addressing (LD-09).
+    expect(sharePointExcelLiveProvider.validate(config).filter((i) => i.severity === 'error').map((i) => i.code)).toEqual(['addressing-disabled']);
     expect(sharePointExcelLiveProvider.validate({ ...config, selection: { worksheet: ' ', selection: { type: 'cell', address: 'B7' } } }).map((i) => i.code)).toContain('worksheet-missing');
     expect(sharePointExcelLiveProvider.validate({ ...config, selection: { worksheet: 'S', selection: { type: 'cell', address: 'A1:B2' } } }).map((i) => i.code)).toContain('cell-invalid');
     expect(sharePointExcelLiveProvider.validate({ ...config, source: fixtureSource({ spItemUrl: '' }) }).map((i) => i.code)).toContain('item-url-missing');

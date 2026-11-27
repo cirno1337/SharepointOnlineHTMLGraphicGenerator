@@ -1,16 +1,22 @@
 import { expect, test, type Page } from '@playwright/test';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { renderPage } from '../src/core/export/render';
+import { fixtureLiveKpi, fixtureSource, liveProject, OBSERVED_LD09_RESULT } from '../tests/livedataFixtures';
 
 // Synthetic values only: reserved .example host and fake identifiers.
 const ITEM_URL = 'https://tenant-a.example/_api/v2.0/drives/b!FIXTUREDRIVE0001/items/01FIXTUREITEM0001';
 const FLAGGED = 'http://localhost:4174';
 const DEFAULT = 'http://localhost:4173';
 
-const SUMMARY_CSV = ',\n,\n,\n,\n,\n,\nOpen issues,17\nDoubled,34\n';
-const okResults = (csv = SUMMARY_CSV) => ({ [ITEM_URL]: { content: `<sheet name="Summary">\n${csv}</sheet>`, format: 'xlsx-sheets', metadata: null, error: null, errorCode: null } });
+/**
+ * LD-09 (2026-11-27): the host's CSV does not keep leading blank rows, so Studio blocks Live Excel exports that
+ * select a cell by its A1 address. These tests cover (a) the editor, which must show the block, and (b) the exported
+ * runtime in a real browser, using pages rendered directly from the core (the UI export is correctly disabled).
+ */
+const okResults = () => ({ [ITEM_URL]: OBSERVED_LD09_RESULT });
 
 async function enableLiveAndAddSource(page: Page) {
   await page.goto(FLAGGED);
@@ -32,12 +38,12 @@ async function addLiveKpi(page: Page) {
   await page.getByLabel('Cell (single cell, e.g. B7)').fill('B7');
 }
 
-/** Export through the real UI and return the saved file path and text. */
-async function exportHtml(page: Page): Promise<{ path: string; html: string }> {
-  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export HTML' }).click()]);
+/** Writes an Interactive Safe page rendered from the core (not through the UI) to a temp file. */
+function renderLivePage(kpis = [fixtureLiveKpi({ fallback: { value: '12', importedAt: '2026-11-01' } })]): string {
+  const html = renderPage(liveProject({ sources: [fixtureSource()], kpis }), { exportedAt: '2026-01-02T03:04:05.000Z', studioBuild: 'e2e' });
   const path = join(mkdtempSync(join(tmpdir(), 'sphs-')), 'live.html');
-  await download.saveAs(path);
-  return { path, html: readFileSync(path, 'utf8') };
+  writeFileSync(path, html, 'utf8');
+  return path;
 }
 
 /** Simulates the SharePoint host: results injected before the page runs; traps network, storage and messages. */
@@ -106,7 +112,17 @@ test('invalid and unsafe sources are rejected, and no source is added', async ({
   await expect(page.getByText('No sources yet. Add one below.')).toBeVisible();
 });
 
-test('Mock LiveData preview: labelled, shows the value, covers each state, makes no external request', async ({ page }) => {
+test('LD-09: the editor blocks export of a Live KPI that selects a cell by A1 address, and says why', async ({ page }) => {
+  await enableLiveAndAddSource(page);
+  await addLiveKpi(page);
+  await expect(page.getByRole('button', { name: 'Export HTML' })).toBeDisabled();
+  await expect(page.getByText(/does not keep leading blank rows/).first()).toBeVisible();
+  await expect(page.getByTestId('validation-summary')).toContainText('error');
+  // the panel explains the observed behavior instead of the old "unverified assumption" text
+  await expect(page.getByTestId('live-panel')).toContainText('does not keep leading blank rows');
+});
+
+test('Mock LiveData preview: labelled, never shows a value for an A1 selection, makes no external request', async ({ page }) => {
   const external: string[] = [];
   page.on('request', (r) => {
     const u = r.url();
@@ -118,22 +134,19 @@ test('Mock LiveData preview: labelled, shows the value, covers each state, makes
   await expect(page.getByTestId('mock-banner')).toContainText('Not connected to SharePoint');
 
   const frame = page.frameLocator('iframe[title="Exported page preview"]');
-  await expect(frame.locator('.sphs-kpi__value')).toHaveText('17');
-  await expect(frame.locator('.sphs-live__meta')).toContainText('Loaded from SharePoint at');
+  await expect(frame.locator('.sphs-live__message')).toHaveText('Selecting a cell from live data is not supported.');
+  await expect(frame.locator('.sphs-kpi__value')).toHaveText('—'); // no fake value, ever
 
   const scenario = page.getByLabel('Mock LiveData preview scenario');
   await scenario.selectOption('missing');
   await expect(frame.locator('.sphs-live__message')).toContainText('Live data is unavailable in the SharePoint editor. Publish or preview the page to load current data.');
   await scenario.selectOption('missing-worksheet');
   await expect(frame.locator('.sphs-live__message')).toHaveText('Worksheet not found.');
-  await scenario.selectOption('missing-cell');
-  await expect(frame.locator('.sphs-live__message')).toHaveText('Cell not found.');
   await scenario.selectOption('malformed');
   await expect(frame.locator('.sphs-live__message')).toHaveText('The workbook data could not be read.');
   await scenario.selectOption('host-error');
   await expect(frame.locator('.sphs-live__message')).toHaveText('Workbook data could not be loaded from SharePoint.');
   await expect(frame.locator('.sphs-live__diag')).toContainText('host-error (mock-error); source 1 ref-');
-  await expect(frame.locator('.sphs-kpi__value')).toHaveText('—'); // no fake value
 
   // snapshot fallback: only when live data is unavailable, always labelled
   await page.getByLabel('Fallback value').fill('12');
@@ -141,9 +154,6 @@ test('Mock LiveData preview: labelled, shows the value, covers each state, makes
   await expect(frame.locator('.sphs-live__badge')).toHaveText('Snapshot fallback');
   await expect(frame.locator('.sphs-live__meta')).toContainText('Snapshot taken');
   await expect(frame.locator('.sphs-live__meta')).not.toContainText('Loaded from SharePoint');
-  await scenario.selectOption('ok');
-  await expect(frame.locator('.sphs-kpi__value')).toHaveText('17');
-  await expect(frame.locator('.sphs-live__badge')).toBeHidden();
   expect(external).toEqual([]);
 });
 
@@ -153,20 +163,12 @@ test('an imported local workbook can populate the mock preview, separately from 
   await page.getByTestId('import-workbook').setInputFiles('fixtures/project-status.xlsx');
   await expect(page.getByText('project-status.xlsx', { exact: false }).first()).toBeVisible();
   const frame = page.frameLocator('iframe[title="Exported page preview"]');
-  await expect(frame.locator('.sphs-kpi__value')).toHaveText('17');
+  await expect(frame.locator('.sphs-live__message')).toHaveText('Selecting a cell from live data is not supported.');
   await expect(page.getByTestId('mock-banner')).toBeVisible();
 });
 
-test('exported Interactive Safe page: values, freshness wording, refresh message, accessibility, no requests or storage', async ({ page, context }) => {
-  await enableLiveAndAddSource(page);
-  await addLiveKpi(page);
-  await page.getByLabel('Fallback value').fill('12');
-  const { path, html } = await exportHtml(page);
-
-  expect(html).toContain('script-src \'unsafe-inline\'');
-  expect(html).not.toMatch(/fetch\(|XMLHttpRequest|WebSocket|localStorage|sessionStorage|eval\(|sendBeacon/);
-  expect(html).not.toContain('ms-sp-authoring-source');
-
+test('exported runtime in a real browser: observed host data never produces a value from an A1 address; refresh, fallback and accessibility hold', async ({ context }) => {
+  const path = renderLivePage();
   const host = await context.newPage();
   const requests: string[] = [];
   host.on('request', (r) => requests.push(r.url()));
@@ -176,14 +178,15 @@ test('exported Interactive Safe page: values, freshness wording, refresh message
   await openAsHost(host, path, okResults());
 
   const kpi = host.locator('[data-sphs-live="kpi"]');
-  await expect(kpi.locator('.sphs-kpi__value')).toHaveText('17');
-  await expect(kpi.locator('.sphs-live__meta')).toContainText('Loaded from SharePoint at');
-  await expect(kpi.locator('.sphs-live__meta')).not.toContainText(/last updated|real-time/i);
-  await expect(kpi.locator('.sphs-live__hint')).toHaveText('Recent workbook changes may take time to appear.');
-  await expect(kpi.locator('.sphs-live__badge')).toBeHidden();
-  await expect(kpi).toHaveAttribute('data-sphs-state', 'live');
+  await expect(kpi.locator('.sphs-live__message')).toHaveText('Selecting a cell from live data is not supported.');
+  await expect(kpi).toHaveAttribute('data-sphs-state', 'fallback');
+  // The observed payload contains 23 and 46, but Studio must not pick either by position.
+  await expect(kpi.locator('.sphs-kpi__value')).toHaveText('12');
+  await expect(kpi.locator('.sphs-live__badge')).toHaveText('Snapshot fallback');
+  await expect(kpi.locator('.sphs-live__meta')).not.toContainText('Loaded from SharePoint');
+  expect(await host.locator('body').innerText()).not.toMatch(/\b(23|46)\b/);
 
-  // accessibility: named region, named button, polite status, visible focus
+  // accessibility: named group, named button, polite status
   const label = await kpi.getAttribute('aria-labelledby');
   await expect(host.locator(`#${label}`)).toHaveText('Open issues');
   await expect(kpi.getByRole('button', { name: 'Refresh data' })).toBeVisible();
@@ -205,21 +208,13 @@ test('exported Interactive Safe page: values, freshness wording, refresh message
   await host.close();
 });
 
-test('exported page: updated host data, missing data, errors and fallback are shown honestly', async ({ page, context }) => {
-  await enableLiveAndAddSource(page);
-  await addLiveKpi(page);
-  await page.getByLabel('Fallback value').fill('12');
-  const { path } = await exportHtml(page);
-
+test('exported runtime: missing data, host errors and fallback are shown honestly', async ({ context }) => {
+  const path = renderLivePage();
   const open = async (results: unknown | undefined) => {
     const p = await context.newPage();
     await openAsHost(p, path, results);
     return p;
   };
-
-  const updated = await open(okResults(SUMMARY_CSV.replace('17', '23')));
-  await expect(updated.locator('.sphs-kpi__value')).toHaveText('23');
-  await updated.close();
 
   const editor = await open(undefined); // no prefetch (SharePoint editor)
   await expect(editor.locator('.sphs-live__message')).toHaveText('Live data is unavailable in the SharePoint editor. Publish or preview the page to load current data.');
@@ -239,36 +234,24 @@ test('exported page: updated host data, missing data, errors and fallback are sh
   await missingKey.close();
 });
 
-test('exported page: hostile workbook values stay inert text and one broken cell does not break another KPI', async ({ page, context }) => {
-  await enableLiveAndAddSource(page);
-  await addLiveKpi(page);
-  await page.getByRole('button', { name: 'Add Live KPI (experimental)' }).click();
-  await page.getByRole('button', { name: /^Live KPI: Live metric/ }).click();
-  await page.getByLabel('Label', { exact: true }).fill('Second');
-  await page.getByLabel('Source', { exact: true }).selectOption({ label: 'Synthetic status' });
-  await page.getByLabel('Cell (single cell, e.g. B7)').fill('A1');
-  const { path } = await exportHtml(page);
-
-  // A1 (row 1) and B7 (row 7) both hold hostile text; formula-looking and markup-looking values must stay inert.
-  const hostile = '"<img src=x onerror=window.__pwned=1>",=HYPERLINK("javascript:alert(1)")\n';
-  const rows = SUMMARY_CSV.split('\n');
-  rows[6] = 'Open issues,"<img src=x onerror=window.__pwned=1><script>window.__pwned=1</script>"';
+test('exported runtime: hostile workbook values stay inert and one broken source does not break another KPI', async ({ context }) => {
+  const path = renderLivePage([fixtureLiveKpi({ id: 'a' }), fixtureLiveKpi({ id: 'b', label: 'Second', cell: 'A1' })]);
+  const hostile = '"<img src=x onerror=window.__pwned=1><script>window.__pwned=1</script>",=HYPERLINK("javascript:alert(1)")\n';
   const p = await context.newPage();
-  await openAsHost(p, path, okResults(`${hostile}${rows.slice(1).join('\n')}`));
-  const values = p.locator('.sphs-kpi__value');
-  await expect(values.nth(0)).toHaveText('<img src=x onerror=window.__pwned=1><script>window.__pwned=1</script>');
-  await expect(values.nth(1)).toHaveText('<img src=x onerror=window.__pwned=1>');
+  await openAsHost(p, path, { [ITEM_URL]: { format: 'xlsx-sheets', content: `<sheet name="Summary">\n${hostile}</sheet>`, metadata: null } });
+  // Values are never selected from the data, so hostile cell text is never displayed or interpreted.
+  await expect(p.locator('.sphs-live__message').nth(0)).toHaveText('Selecting a cell from live data is not supported.');
+  await expect(p.locator('.sphs-live__message').nth(1)).toHaveText('Selecting a cell from live data is not supported.');
   expect(await p.locator('img').count()).toBe(0);
+  expect(await p.locator('body').innerText()).not.toContain('onerror');
   expect(await p.evaluate(() => (window as unknown as { __pwned?: number }).__pwned)).toBeUndefined();
   await p.close();
 
-  // One KPI points at a cell beyond the data; the other (A1, empty) still renders its own state.
+  // A malformed worksheet fails the KPI with its own state; the page keeps running.
   const p2 = await context.newPage();
-  await openAsHost(p2, path, okResults(',\n,\n,\n'));
-  await expect(p2.locator('.sphs-live__message').nth(0)).toHaveText('Cell not found.');
-  await expect(p2.locator('.sphs-kpi__value').nth(1)).toHaveText('No value');
-  await expect(p2.locator('[data-sphs-live="kpi"]').nth(0)).toHaveAttribute('data-sphs-state', 'error');
-  await expect(p2.locator('[data-sphs-live="kpi"]').nth(1)).toHaveAttribute('data-sphs-state', 'live');
+  await openAsHost(p2, path, { [ITEM_URL]: { format: 'xlsx-sheets', content: '<sheet name="Summary">unterminated', metadata: null } });
+  await expect(p2.locator('.sphs-live__message').nth(0)).toHaveText('The workbook data could not be read.');
+  await expect(p2.locator('[data-sphs-live="kpi"]').nth(1)).toHaveAttribute('data-sphs-state', 'error');
   await p2.close();
 });
 

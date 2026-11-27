@@ -56,5 +56,8 @@ Only `spItemUrl` and `fileName` are emitted (LD-01). `filePath`, `label` and `cs
 ## D-018 Freshness and fallback wording
 The runtime says "Loaded from SharePoint at {time}", never "last updated" or "real-time", adds "Recent workbook changes may take time to appear.", disables Refresh briefly, announces via aria-live, promises nothing, and never polls or retries. A snapshot fallback is optional, always labelled "Snapshot fallback" with its own timestamp, and never shown as live.
 
-## D-019 Cell addressing assumes CSV starts at A1 (UNVERIFIED)
-The runtime treats the first CSV row/column as row 1/column A. The lab did not prove it (the generated page skipped blank rows). A `live-addressing` warning is always shown; the LD-09 probe page decides. If LD-09 shows otherwise, addressing must change before any further use.
+## D-019 Cell addressing assumed CSV starts at A1 (SUPERSEDED by D-020)
+The first implementation treated the first CSV row/column as row 1/column A, unverified. LD-09 disproved it (see D-020).
+
+## D-020 Arbitrary A1 addressing of live data is disabled (LD-09, 2026-11-27)
+LD-09 (one tenant, `TENANT_OBSERVED_ONCE`): the host's `xlsx-sheets` CSV drops leading blank worksheet rows. Excel `Summary!A7:B8` arrived as the first two CSV rows, and `metadata` carries only `fileName` and `extension`, so worksheet coordinates cannot be restored. Reading "CSV row 7, column 2" for `B7` would show nothing or, with other layouts, the wrong cell. Decision: do not guess. Validation reports error `live-addressing-disabled` for every Live KPI (export blocked), the runtime returns state `addressing-unsupported` and never a value, and the provider reports `addressing-disabled`. Snapshot Excel A1 binding (local import) is unchanged. Constant: `LIVE_CELL_ADDRESSING_ENABLED = false`. Re-enable only with a selector that is proven against host data (for example row-label or table-header lookup, which needs a separate design and tenant evidence, see `docs/research/livedata-experiments.md`). Unobserved: leading blank columns, interior blank rows.

@@ -34,4 +34,7 @@
 ### Changed
 - Export validator is profile-aware (strict manifest, runtime equality, CSP-matches-profile, extra forbidden APIs).
 ### Not done
-- LD-06, LD-07 (security gate), LD-09; no list/range/table/chart live components; no tenant validation of Studio's runtime.
+- LD-06, LD-07 (security gate), LD-10; no list/range/table/chart live components; no tenant validation of Studio's runtime.
+
+### 0.3.0 addendum: LD-09 (2026-11-27)
+- Fixed (by disabling): A1 addressing of live data. The host CSV drops leading blank rows, so a CSV row is not an Excel row. Live KPIs now fail validation with `live-addressing-disabled`; the runtime reports `addressing-unsupported` and never a value; the mock preview emits the observed shape. Snapshot Excel A1 binding is unchanged.

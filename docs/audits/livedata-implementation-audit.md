@@ -35,14 +35,14 @@ Severity: BLOCKER, HIGH, MEDIUM, LOW. "Fixed" means corrected in this milestone 
 | ID | Sev | Risk | Needed |
 |---|---|---|---|
 | U1 | BLOCKER for pilot | Viewer isolation unknown: a user who can open the page but not the workbook might see data. | LD-07 with approved test users. If data appears: SECURITY BLOCKER. |
-| U2 | HIGH | A1 addressing is an unverified assumption; the observed generated page skipped blank rows. A wrong assumption shows the wrong cell with no error. | LD-09 probe page in a controlled test; change addressing if it fails. Warning always shown meanwhile. |
+| U2 | RESOLVED BY DISABLING | LD-09 (2026-11-27) disproved the A1 assumption: leading blank rows are dropped and metadata has no coordinates. | Arbitrary A1 addressing disabled (D-020). Live KPI export is blocked until a verified selector exists. |
 | U3 | MEDIUM | The runtime assumes `__LD_RESULTS__` exists when the page runs (as the generated page did). If a host injects later, the page shows the editor message. No retry is implemented on purpose. | LD-10. |
 | U4 | MEDIUM | If the CSP differs in another tenant and blocks the inline script, the page keeps showing "Loading live data…" with no explanation. | Controlled test; consider a static note. |
 | U5 | MEDIUM | SharePoint rewrites uploaded files (mso block, xmlns, 34-byte difference seen) and a comment in the generated runtime mentions a security layer that rewrites some script globals. Studio's runtime might be altered. | LD-10 compare stored vs exported file. |
 | U6 | MEDIUM | Refresh lag unquantified; the first refresh after an edit returned the old value. | LD-05 follow-up. |
 | U7 | LOW | `base-uri` and `form-action` unset in both profiles (the exporter never emits `<base>`/`<form>`; the validator rejects `<base>` and warns on `<form>`). | Review after tenant evidence. |
 | U8 | LOW | `postMessage(..., '*')` as observed; content-free. | Narrow only with documented target. |
-| U9 | LOW | Number/date text from the host is unverified; formats other than "as is" apply only to plain numeric text. | LD-09. |
+| U9 | LOW | Number/date text from the host: LD-09 saw plain numbers (`23`) and ISO-looking dates (`2026-12-01`); formatting of currency, percentages and real date serials is unobserved. | Further synthetic layouts. |
 | U10 | LOW | `cslViewLink` is stored but never used. | Revisit after LD-07. |
 
 ### Deferred

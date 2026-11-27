@@ -154,7 +154,8 @@
     return null;
   }
 
-  /* ASSUMPTION (unverified, see LD-09): CSV row 1 / column 1 is Excel cell A1. */
+  /* Pure CSV-grid lookup (row/column index within the parsed CSV). NOT an Excel A1 lookup: LD-09 showed the host
+     drops leading blank rows, so resolveKpi does not use this. Kept for the grid tests only. */
   function readCell(sheets, worksheet, address) {
     var pos = parseCell(address);
     if (!pos) return fail('bad-address');
@@ -229,9 +230,10 @@
     }
     var env = parseEnvelope(result.content);
     if (!env.ok) return merge(fail(env.code), base);
-    var cell = readCell(env.sheets, cfg.sheet, cfg.cell);
-    if (!cell.ok) return merge(fail(cell.code), base);
-    return { ok: true, value: cell.value, empty: cell.empty, ref: ref };
+    /* LD-09: the host CSV does not keep leading blank rows, so an Excel A1 address cannot be mapped onto it.
+       Cell selection is disabled; never guess a position. */
+    if (!findSheet(env.sheets, cfg.sheet)) return merge(fail('worksheet-not-found'), base);
+    return merge(fail('addressing-unsupported'), base);
   }
 
   function merge(a, b) {
@@ -254,6 +256,7 @@
     'worksheet-not-found': 'Worksheet not found.',
     'cell-not-found': 'Cell not found.',
     'bad-address': 'The configured cell address is not valid.',
+    'addressing-unsupported': 'Selecting a cell from live data is not supported.',
     'source-config': 'The live data source is not configured correctly.'
   };
 

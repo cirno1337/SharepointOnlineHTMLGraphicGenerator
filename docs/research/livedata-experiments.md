@@ -118,8 +118,43 @@ Not run. Protocol in `docs/testing/livedata-controlled-tenant-test.md`. LiveData
 ### LD-08 failure states: local fixtures, done
 Covered by unit tests against the exact exported runtime run in an isolated VM, and by e2e in a real browser: missing `__LD_RESULTS__`, missing key, `error`/`errorCode`, empty content, unsupported format, malformed envelope, missing worksheet, missing cell, bad address, empty cell, duplicate sheet names (first wins), Unicode sheet names, quoted commas/quotes/newlines, CRLF/LF/CR, BOM, formula-, markup- and script-looking values, oversized input (content, sheets, rows, columns, cell length). No tenant action was needed. Class: not a tenant observation; behavior of Studio's own code.
 
-### LD-09 envelope and addressing fidelity probe: PLANNED
-`renderProbePage` generates the diagnostic page; protocol in the controlled tenant test document. Not uploaded (no tenant operations in this phase).
+### LD-09 envelope and addressing fidelity probe: RUN 2026-11-27, A1 ASSUMPTION DISPROVEN (`TENANT_OBSERVED_ONCE`)
+Operation: Studio's probe page (`renderProbePage`) was uploaded as a NEW page `sphs-lab-ld09-probe.html` (it did not exist; nothing overwritten) and opened in view mode by the author. The item URL was taken from an existing lab page inside the browser and never written to disk or Git. No workbook, sharing or permission change.
+
+Synthetic workbook layout (known from the fixture): `Summary` has `A7 = "Open issues"`, `B7 = 23` (changed during LD-05; originally 17), `A8 = "Doubled"`, `B8 = B7*2` (46); rows 1 to 6 are empty. `Issues` has its header row in row 1.
+
+Observed host data (sanitized, `<spItemUrl>` is the manifest key):
+```
+window.__LD_RESULTS__            object, 1 key
+result fields                    spItemUrl, format, content, metadata   (no error, no errorCode field)
+format                           "xlsx-sheets"
+metadata                         object with keys: fileName, extension  (no coordinates, no used range, no row/column offsets)
+content length                   254
+content start                    <sheet name="Summary">\nOpen issues,23\nDoubled,46\n</sheet>\n\n<sheet name="Issues">\nTitle,Status,Owner,DueDate,Priority\n...
+Summary block                    27 chars; starts with a line break
+  line 1  ""                     (the line break after the opening tag)
+  line 2  "Open issues,23"
+  line 3  "Doubled,46"
+  line 4  ""                     (final line break)
+Issues block                     166 chars; line 1 "" ; line 2 header row ; lines 3 to 5 data rows ; line 6 ""
+```
+Line endings: only `\n` was seen (no `\r` in the printed start). Numbers appear as plain text without formatting. Dates in the `Issues` sheet appear as `2026-12-01` style text.
+
+Findings:
+- A line break follows `<sheet name="...">` and another precedes `</sheet>`: **yes**. Sheets are separated by a blank line.
+- Leading blank worksheet rows: **NOT preserved.** Excel rows 1 to 6 of `Summary` are empty and absent; `Open issues,23` is on CSV row 1 (probe line 2 minus the framing line break), not row 7. `Summary!B7` is **not** CSV row 7. Positional reading of row 7 would find no cell at all (the block has two data rows).
+- Leading blank columns: **UNKNOWN.** In every observed row column A is non-empty, so this layout cannot show whether blank leading columns are kept.
+- Interior blank rows and blank rows between data: **UNKNOWN** (the synthetic workbook has none).
+- The value `23` sits in the second CSV column of the first CSV row; that is a coincidence of this layout (column A is populated), not evidence of positional columns.
+- Metadata cannot restore coordinates: it carries `fileName` and `extension` only.
+- CRLF versus LF: LF only.
+
+Decision: **Outcome B.** CSV rows are not Excel rows. Studio's A1 addressing assumption (live-addressing, T18, risk U2) is **invalid** and arbitrary A1 cell addressing for LiveData is disabled in Studio (see `IMPLEMENTATION_STATUS.md`, `DECISIONS.md` D-020). Snapshot Excel A1 binding (read from the workbook the author imports locally) is unchanged. LD-10 is not run.
+
+Not tested here: whether the trimming is per worksheet "used range" or "first non-empty row", behavior with leading blank columns, interior blank rows, merged cells, hidden rows, tables, formatted numbers and dates.
+
+Cheapest follow-up that would separate "trimmed to first non-empty row" from other layouts (needs separate approval because it changes a workbook; do NOT run without it): a second synthetic worksheet with a value in `C3`, another in `A6`, a blank row 4 and a blank column B; compare against the probe output.
 
 ### Read-only inspection performed during this phase
 One read-only fetch of the Copilot-generated page's stored file from the author's browser to read how it indexed CSV rows. No tenant content was changed.
+LD-09: one read-only REST list of the Site Pages file names (to confirm the probe name was free) and one read of the stored bytes of an existing lab page (inside the browser) to obtain the manifest.

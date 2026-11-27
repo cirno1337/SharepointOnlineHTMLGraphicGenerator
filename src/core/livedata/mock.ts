@@ -35,8 +35,9 @@ function csvField(v: string): string {
 }
 
 /**
- * Serialise a parsed sheet to CSV from A1: rows count from row 1 and columns from column A, blank interior rows
- * are kept as empty lines so cell positions hold, and each row is written only up to its last populated cell.
+ * Serialise a parsed sheet to CSV in the shape LD-09 observed: leading blank rows are dropped (CSV row 1 is the
+ * first non-empty worksheet row), columns start at column A, interior blank rows are kept as empty lines and each
+ * row is written only up to its last populated cell. The output does NOT preserve Excel row numbers.
  * Work is proportional to the number of POPULATED cells (not the used-range size) and bounded by the runtime's own
  * row and column limits (anything beyond them would be rejected by the runtime anyway). An unbounded loop over a
  * huge imported used range froze the editor (found in the adversarial audit).
@@ -54,8 +55,13 @@ export function sheetToCsv(sheet: SheetData): string {
     row.set(p.col, String(value));
     if (p.row > lastRow) lastRow = p.row;
   }
+  // LD-09: the host drops LEADING blank rows (Summary B7 arrived as the first CSV row). Interior blank rows,
+  // leading blank columns and trailing handling were not observed; interior rows are kept as empty lines here.
+  if (byRow.size === 0) return '';
+  let firstRow = lastRow;
+  for (const r of byRow.keys()) if (r < firstRow) firstRow = r;
   const lines: string[] = [];
-  for (let r = 1; r <= lastRow; r++) {
+  for (let r = firstRow; r <= lastRow; r++) {
     const row = byRow.get(r);
     if (!row) {
       lines.push('');
@@ -74,7 +80,7 @@ function escName(n: string): string {
 }
 
 export function workbookToEnvelope(wb: WorkbookData, rename?: (n: string) => string): string {
-  return wb.sheets.map((s) => `<sheet name="${escName(rename ? rename(s.name) : s.name)}">\n${sheetToCsv(s)}</sheet>`).join('\n');
+  return wb.sheets.map((s) => `<sheet name="${escName(rename ? rename(s.name) : s.name)}">\n${sheetToCsv(s)}</sheet>`).join('\n\n');
 }
 
 /** Tiny sanitized workbook used when no local workbook has been imported. Contains no real data. */

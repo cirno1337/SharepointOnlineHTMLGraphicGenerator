@@ -1,6 +1,6 @@
 import { MAX_HTML_BYTES } from './capabilities';
 import { INTERACTIVE_CSP, STATIC_CSP } from './export/render';
-import { CELL_ADDRESSING_NOTICE, LIVEDATA_WARNING, MAX_LIVE_SOURCES, PERMISSION_BLOCKER_NOTICE } from './livedata/constants';
+import { CELL_ADDRESSING_NOTICE, LIVE_CELL_ADDRESSING_ENABLED, LIVEDATA_WARNING, MAX_LIVE_SOURCES, PERMISSION_BLOCKER_NOTICE } from './livedata/constants';
 import { RUNTIME_SOURCE } from './livedata/runtime';
 import { parseLiveCellAddress, parseSpItemUrl, validateLiveSourceShape } from './livedata/source';
 import type { ExportProfile, Project } from './project';
@@ -78,7 +78,9 @@ function validateLive(project: Project, opts: ValidateProjectOptions): Issue[] {
   if (page.exportProfile !== 'interactive-safe') err('live-needs-interactive', 'Live Excel components need the Interactive Safe export profile.');
   warn('live-experimental', LIVEDATA_WARNING);
   warn('live-permissions', PERMISSION_BLOCKER_NOTICE);
-  warn('live-addressing', CELL_ADDRESSING_NOTICE);
+  if (!LIVE_CELL_ADDRESSING_ENABLED) {
+    for (const c of live) err('live-addressing-disabled', CELL_ADDRESSING_NOTICE, c.id);
+  }
 
   const reported = new Set<string>();
   for (const c of live) {

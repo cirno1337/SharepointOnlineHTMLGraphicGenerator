@@ -115,9 +115,18 @@ export function loadRuntimeCore(): { core: RuntimeCore; touched: string[] } {
 /** Cross-realm values compare poorly; normalise through JSON. */
 export const plain = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
-export const SUMMARY_CSV = ',\n,\n,\n,\n,\n,\nOpen issues,17\nDoubled,34\n';
+/**
+ * The Summary worksheet as the host delivered it in LD-09: Excel rows 1 to 6 are empty and ABSENT, so
+ * `Open issues` (Excel A7) is the first CSV row. Excel row numbers are not preserved.
+ */
+export const SUMMARY_CSV = 'Open issues,17\nDoubled,34\n';
+/** Exact framing observed in LD-09 (synthetic values): line break after the opening tag and before the closing tag, blank line between sheets. */
+export const OBSERVED_LD09_CONTENT =
+  '<sheet name="Summary">\nOpen issues,23\nDoubled,46\n</sheet>\n\n<sheet name="Issues">\nTitle,Status,Owner,DueDate,Priority\nLogin fails on Safari,Open,Ana,2026-12-01,High\nSlow dashboard,Open,Ben,2026-12-05,Medium\nTypo in footer,Closed,Cy,2026-11-20,Low\n</sheet>';
+/** Observed result shape: no error / errorCode fields; metadata has only fileName and extension. */
+export const OBSERVED_LD09_RESULT = { format: 'xlsx-sheets', content: OBSERVED_LD09_CONTENT, metadata: { fileName: 'status.xlsx', extension: 'xlsx' } };
 export function envelope(sheets: Record<string, string>): string {
   return Object.entries(sheets)
     .map(([n, csv]) => `<sheet name="${n}">\n${csv}</sheet>`)
-    .join('\n');
+    .join('\n\n');
 }

@@ -57,11 +57,11 @@ Runtime necessity says nothing about security: every run used the author's own a
 
 ## 8. `xlsx-sheets` envelope
 
-`format === 'xlsx-sheets'`; `content` holds one block per worksheet: `<sheet name="Summary"> CSV text </sheet>` repeated. Tables are not delivered as objects. `TENANT_OBSERVED_ONCE` for the exact framing (the generated page's own extractor was `<sheet name="X">([\s\S]*?)</sheet>`). **Unknown:** whether a line break follows the opening tag; whether the CSV starts at cell A1 (see section 9).
+`format === 'xlsx-sheets'`; `content` holds one block per worksheet: `<sheet name="Summary"> CSV text </sheet>` repeated. Tables are not delivered as objects. `TENANT_OBSERVED_ONCE` for the exact framing (the generated page's own extractor was `<sheet name="X">([\s\S]*?)</sheet>`). LD-09 observed a line break after the opening tag and before the closing tag and a blank line between sheets; the CSV does **not** start at Excel A1 (see section 9).
 
 ## 9. CSV parsing behavior and cell addressing
 
-The generated page dropped blank lines and read the KPI as "the first non-blank row, second column" rather than `B7`. So whether CSV row 1 / column 1 is Excel A1 is **UNKNOWN**. Studio assumes it is and warns (`live-addressing`). The LD-09 probe page ([docs/testing/livedata-controlled-tenant-test.md](../testing/livedata-controlled-tenant-test.md)) settles it. Studio's runtime parses RFC 4180 CSV (quoted commas, doubled quotes, multiline fields, CRLF/LF/CR, BOM) and treats every value as text.
+**LD-09 result (2026-11-27, `TENANT_OBSERVED_ONCE`, one tenant): CSV rows are NOT Excel rows.** The synthetic `Summary` worksheet has `A7 = "Open issues"`, `B7 = 23`, `A8 = "Doubled"`, `B8 = 46` and empty rows 1 to 6. The host delivered a block whose text is `Open issues,23` and `Doubled,46` on two lines (one line break after the opening tag, one before the closing tag): leading blank rows are dropped, so `B7` is not CSV row 7. `metadata` has only `fileName` and `extension` (no used-range or offset), so coordinates cannot be restored. Unobserved: leading blank columns, interior blank rows. Framing seen: a line break after the opening tag and before the closing tag, a blank line between sheets, LF line endings, no `error`/`errorCode` fields on success. Studio therefore **disables arbitrary A1 addressing of live data** (D-020). Studio's runtime still parses RFC 4180 CSV (quoted commas, doubled quotes, multiline fields, CRLF/LF/CR, BOM) and treats every value as text.
 
 ## 10. Refresh message
 
@@ -118,5 +118,5 @@ window.__LD_RESULTS__ = { "<spItemUrl>": { "content": "<sheet name=\"Summary\">\
 - Emit only evidenced fields; keep `filePath`, `label`, `cslViewLink` out of the page.
 - Interactive Safe needs `script-src 'unsafe-inline'`; the validator allows only Studio's own runtime and the manifest.
 - Show "Loaded from SharePoint at {time}" and the hint "Recent workbook changes may take time to appear."; never call the data real-time.
-- A1 addressing is an unverified assumption until LD-09.
-- Studio's runtime must be validated in a controlled tenant test (LD-09 first) before any pilot.
+- A1 addressing of live data is disabled (LD-09 disproved positional rows; D-020). Use Excel Snapshot for cell-addressed values.
+- Studio's runtime must be validated in a controlled tenant test (LD-10) before any pilot; LD-10 now needs a selector that does not depend on Excel coordinates.

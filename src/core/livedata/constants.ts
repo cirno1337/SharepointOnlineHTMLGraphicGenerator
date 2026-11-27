@@ -27,8 +27,16 @@ export const LIVEDATA_UI_WARNING =
 export const PERMISSION_BLOCKER_NOTICE =
   'Permission isolation has not yet been validated with a viewer who can access the page but not the workbook. LiveData is not approved for limited pilot until LD-07 passes.';
 
+/**
+ * LD-09 (2026-11-27, one tenant): the host's xlsx-sheets CSV does NOT keep leading blank worksheet rows (Excel
+ * Summary!B7 arrived as the first CSV row) and the metadata carries only fileName and extension, so worksheet
+ * coordinates cannot be restored. Arbitrary A1 addressing of live data is therefore disabled. Snapshot Excel
+ * (local import, A1 from the workbook file itself) is unaffected.
+ */
+export const LIVE_CELL_ADDRESSING_ENABLED = false as const;
+
 export const CELL_ADDRESSING_NOTICE =
-  'Cell addressing assumes the host data starts at cell A1 (row 1 and column A are the first CSV row and column). This is unverified: the observed generated page skipped blank rows. Run the LiveData probe page (LD-09) in a controlled tenant test before relying on a cell address.';
+  'Live Excel cannot select a cell by its A1 address: the data SharePoint provides does not keep leading blank rows, so a CSV row is not an Excel row (observed in LD-09, one tenant). Use Excel Snapshot for cell-addressed values.';
 
 export const FRESHNESS_HINT = 'Recent workbook changes may take time to appear.';
 export const EDITOR_UNAVAILABLE_MESSAGE =

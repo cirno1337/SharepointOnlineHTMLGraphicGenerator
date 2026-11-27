@@ -1,5 +1,7 @@
 import type { WorkbookData } from '../excel/types';
 import {
+  CELL_ADDRESSING_NOTICE,
+  LIVE_CELL_ADDRESSING_ENABLED,
   LIVEDATA_CONTRACT_REVISION,
   LIVEDATA_PROVIDER_EVIDENCE,
   LIVEDATA_WARNING,
@@ -78,6 +80,7 @@ export const sharePointExcelLiveProvider: DataProvider<LiveExcelConfig, Record<s
     if (config.selection.selection.type !== 'cell' || parseLiveCellAddress(config.selection.selection.address) === null) {
       out.push({ severity: 'error', code: 'cell-invalid', message: 'Use a single cell such as A1, B7 or AA10 (no ranges, rows, columns or sheet names).' });
     }
+    if (!LIVE_CELL_ADDRESSING_ENABLED) out.push({ severity: 'error', code: 'addressing-disabled', message: CELL_ADDRESSING_NOTICE });
     return out;
   },
 

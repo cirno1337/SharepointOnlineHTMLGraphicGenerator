@@ -4,14 +4,14 @@ Purpose: validate Studio's own Interactive Safe export and runtime in a real ten
 
 Prerequisites: Studio built with `VITE_EXPERIMENTAL_EXCEL_LIVE=true`; a synthetic workbook (`fixtures/project-status.xlsx` shape: `Summary!B7 = 17`, a table `Issues`) in a test library; permission to upload pages to a test Site Pages library; the workbook's item URL provided by the test owner (never commit it).
 
-## LD-09: addressing and envelope fidelity (run first; read-only apart from uploading a new test page)
+## LD-09: addressing and envelope fidelity (DONE 2026-11-27: positional A1 disproven; see livedata-experiments.md)
 
 Goal: determine whether CSV row 1 / column 1 of the injected data is Excel cell A1, whether a line break follows `<sheet name="...">`, and what `metadata` and number/date text look like.
 1. In Studio add the source, then **Download LiveData probe page (LD-09)**.
 2. Upload it as a new, clearly named page (`sphs-lab-ld09-probe.html`). Do not overwrite anything.
 3. Open it in view mode and read the output: result fields, format, content start, per-sheet line numbers with blank lines visible.
 4. Record: on which line `Open issues,17` appears (line 7 means rows are positional; line 1 means leading blank rows are dropped); whether the first CSV column is column A; any metadata keys; how numbers and dates are written.
-5. Outcomes: positional from A1 -> upgrade `live-addressing` to a confirmed note. Otherwise -> **change the runtime's addressing before any further test** (do not ship the A1 assumption).
+5. Result: leading blank rows are dropped (Outcome B). A1 addressing of live data is disabled (D-020). LD-10 must not run with a Live KPI until a verified selector exists; the probe page remains the diagnostic tool.
 
 ## LD-10: Studio export in the tenant
 
