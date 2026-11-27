@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { MAX_LIVE_SOURCES } from './livedata/constants';
+import { defaultLabelAdjacent, LiveSelectorSchema } from './livedata/selector';
+import { LiveSourceSchema } from './livedata/source';
 
 /** A scalar spreadsheet value after sanitising. Dates are ISO strings; formulas are cached results. */
 export const CellValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
@@ -72,6 +75,29 @@ export const ComponentSchema = z.discriminatedUnion('type', [
     rows: z.array(z.array(CellValueSchema).max(100)).max(5000),
     binding: BindingSchema.optional(),
   }),
+  /**
+   * EXPERIMENTAL SharePoint Live Excel KPI (observed contract revision 1). Reads one cell of the
+   * workbook data the SharePoint viewer injects at view time. The optional fallback is a labelled
+   * snapshot value; it is never shown as live data.
+   */
+  z.object({
+    ...base,
+    type: z.literal('liveKpi'),
+    label: text(200),
+    sourceId: z.string().max(64),
+    worksheet: text(255),
+    selector: LiveSelectorSchema,
+    prefix: text(20).default(''),
+    suffix: text(20).default(''),
+    numberFormat: z.enum(['auto', 'integer', 'decimal1', 'decimal2']).default('auto'),
+    emptyText: text(100).default('No value'),
+    errorText: text(200).default(''),
+    showLoadedAt: z.boolean().default(true),
+    showRefresh: z.boolean().default(true),
+    warnAt: z.number().finite().optional(),
+    criticalAt: z.number().finite().optional(),
+    fallback: z.object({ value: text(200), importedAt: z.string().max(40).optional() }).optional(),
+  }),
 ]);
 export type Component = z.infer<typeof ComponentSchema>;
 export type ComponentType = Component['type'];
@@ -83,10 +109,14 @@ export const ProjectSchema = z.object({
     title: text(200),
     lang: z.string().regex(/^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/).default('en'),
     accent: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#0f6cbd'),
+    /** static-safe: no script, snapshot data only (default). interactive-safe: experimental LiveData runtime. */
+    exportProfile: z.enum(['static-safe', 'interactive-safe']).default('static-safe'),
+    liveSources: z.array(LiveSourceSchema).max(MAX_LIVE_SOURCES).default([]),
     components: z.array(ComponentSchema).max(500),
   }),
 });
 export type Project = z.infer<typeof ProjectSchema>;
+export type ExportProfile = Project['page']['exportProfile'];
 
 export function emptyProject(): Project {
   return {
@@ -96,6 +126,8 @@ export function emptyProject(): Project {
       title: 'Project status',
       lang: 'en',
       accent: '#0f6cbd',
+      exportProfile: 'static-safe',
+      liveSources: [],
       components: [{ id: 'c1', type: 'heading', level: 1, text: 'Project status' }],
     },
   };
@@ -124,11 +156,51 @@ export function newComponent(type: ComponentType): Component {
       return { id, type, label: 'Metric', value: '0', prefix: '', suffix: '' };
     case 'table':
       return { id, type, caption: 'Data table', columns: ['Column A', 'Column B'], rows: [['A1', 'B1']] };
+    case 'liveKpi':
+      return {
+        id,
+        type,
+        label: 'Live metric',
+        sourceId: '',
+        worksheet: 'Summary',
+        selector: defaultLabelAdjacent(''),
+        prefix: '',
+        suffix: '',
+        numberFormat: 'auto',
+        emptyText: 'No value',
+        errorText: '',
+        showLoadedAt: true,
+        showRefresh: true,
+      };
   }
 }
 
-export function parseProject(json: unknown): { ok: true; project: Project } | { ok: false; error: string } {
-  const r = ProjectSchema.safeParse(json);
-  if (r.success) return { ok: true, project: r.data };
+/**
+ * Projects saved before LD-09 stored a Live KPI position as `cell` (an Excel A1 address). That selection is
+ * unsupported. Such a component is loaded with the explicit `deprecated-cell` selector so nothing is lost, it is
+ * reported as a warning, and it stays blocked from export. It is NEVER converted into another selector: the author
+ * must choose and configure a label selector manually. No schema version change is needed.
+ */
+export const LEGACY_CELL_NOTICE = 'This Live KPI came from an older project that selected a cell by its Excel address, which is no longer supported. It stays blocked from export until you choose “Row label + adjacent value”.';
+
+function migrateLegacyLiveKpis(json: unknown): { json: unknown; legacyComponentIds: string[] } {
+  const ids: string[] = [];
+  const page = (json as { page?: { components?: unknown } } | null)?.page;
+  if (!page || !Array.isArray(page.components)) return { json, legacyComponentIds: ids };
+  const components = page.components.map((c) => {
+    if (c && typeof c === 'object' && (c as { type?: unknown }).type === 'liveKpi' && !('selector' in c) && typeof (c as { cell?: unknown }).cell === 'string') {
+      const { cell, ...rest } = c as Record<string, unknown> & { cell: string };
+      if (typeof rest.id === 'string') ids.push(rest.id);
+      return { ...rest, selector: { type: 'deprecated-cell', address: cell.slice(0, 40) } };
+    }
+    return c;
+  });
+  return { json: { ...(json as object), page: { ...page, components } }, legacyComponentIds: ids };
+}
+
+export function parseProject(json: unknown): { ok: true; project: Project; legacyComponentIds: string[] } | { ok: false; error: string } {
+  const migrated = migrateLegacyLiveKpis(json);
+  const r = ProjectSchema.safeParse(migrated.json);
+  if (r.success) return { ok: true, project: r.data, legacyComponentIds: migrated.legacyComponentIds };
   return { ok: false, error: r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).slice(0, 5).join('; ') };
 }

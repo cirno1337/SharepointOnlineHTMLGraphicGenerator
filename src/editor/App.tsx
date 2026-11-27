@@ -2,11 +2,15 @@ import { useMemo, useReducer, useState } from 'react';
 import { applyRefresh, planRefresh, type RefreshPlan } from '../core/excel/refresh';
 import type { WorkbookData } from '../core/excel/types';
 import { exportContext, renderPage } from '../core/export/render';
-import { emptyProject, parseProject, type Component } from '../core/project';
+import { compileManifest } from '../core/livedata/manifest';
+import { buildMockResults, mockFixtureWorkbook, mockInjectionScript, type MockScenario } from '../core/livedata/mock';
+import { emptyProject, LEGACY_CELL_NOTICE, parseProject, type Component } from '../core/project';
 import { BASELINE_TEMPLATE_NAME, buildBaselineProject } from '../core/templates/baseline';
 import { validateHtml, validateProject } from '../core/validate';
 import { downloadText, safeFileName } from './download';
+import { LIVE_ENABLED } from './flags';
 import { Inspector } from './Inspector';
+import { LiveDataPanel } from './LiveDataPanel';
 import { Outline } from './Outline';
 import { CapabilitiesPanel, RefreshPanel, ValidationPanel } from './Panels';
 import { Preview } from './Preview';
@@ -22,8 +26,21 @@ export function App() {
   const [plan, setPlan] = useState<{ plan: RefreshPlan; fileName: string } | null>(null);
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
+  const [scenario, setScenario] = useState<MockScenario>('ok');
+
   const html = useMemo(() => renderPage(project), [project]);
-  const issues = useMemo(() => [...validateProject(project), ...validateHtml(html)], [project, html]);
+  const issues = useMemo(
+    () => [...validateProject(project, { liveEnabled: LIVE_ENABLED }), ...validateHtml(html, { profile: project.page.exportProfile })],
+    [project, html],
+  );
+  const interactive = project.page.exportProfile === 'interactive-safe';
+  // Mock LiveData preview only: sanitized fixture or the locally imported workbook, never SharePoint.
+  const mockScript = useMemo(() => {
+    if (!interactive) return null;
+    const used = new Set(project.page.components.flatMap((c) => (c.type === 'liveKpi' ? [c.sourceId] : [])));
+    const manifest = compileManifest(project.page.liveSources, used);
+    return mockInjectionScript(buildMockResults(manifest.entries, workbook ?? mockFixtureWorkbook(), scenario));
+  }, [interactive, project.page.components, project.page.liveSources, workbook, scenario]);
   const hasErrors = issues.some((i) => i.severity === 'error');
   const selected = project.page.components.find((c) => c.id === selectedId) ?? null;
   const hasBindings = project.page.components.some((c) => (c.type === 'kpi' || c.type === 'table') && c.binding);
@@ -32,6 +49,11 @@ export function App() {
     if (hasErrors) return;
     downloadText(safeFileName(project.page.title, 'html'), 'text/html;charset=utf-8', renderPage(project, exportContext()));
     setMessage({ kind: 'ok', text: 'Exported. Upload the file to a Site Pages library using "Upload HTML page".' });
+  }
+
+  function saveProject() {
+    if (project.page.liveSources.length > 0 && !window.confirm('This project contains SharePoint workbook item URLs (tenant host and workbook identifiers). Do not commit or share the project file. Save it?')) return;
+    downloadText(safeFileName(project.name, 'studio.json'), 'application/json', JSON.stringify(project, null, 2));
   }
 
   function loadBaseline() {
@@ -49,7 +71,11 @@ export function App() {
       if (!r.ok) return setMessage({ kind: 'error', text: `Invalid project file: ${r.error}` });
       dispatch({ type: 'load', project: r.project });
       setSelectedId(r.project.page.components[0]?.id ?? null);
-      setMessage({ kind: 'ok', text: `Opened ${r.project.name}.` });
+      setMessage(
+        r.legacyComponentIds.length > 0
+          ? { kind: 'error', text: `Opened ${r.project.name}. ${r.legacyComponentIds.length} Live KPI(s) used a removed cell-address selection. ${LEGACY_CELL_NOTICE}` }
+          : { kind: 'ok', text: `Opened ${r.project.name}.` },
+      );
     } catch {
       setMessage({ kind: 'error', text: 'The file is not valid JSON.' });
     }
@@ -75,7 +101,7 @@ export function App() {
           Accent
           <input type="color" value={project.page.accent} onChange={(e) => dispatch({ type: 'page', patch: { accent: e.target.value } })} />
         </label>
-        <button type="button" onClick={() => downloadText(safeFileName(project.name, 'studio.json'), 'application/json', JSON.stringify(project, null, 2))}>
+        <button type="button" onClick={saveProject}>
           Save project
         </button>
         <label className="field inline">
@@ -89,7 +115,7 @@ export function App() {
           Export HTML
         </button>
         <span id="export-hint" className="muted">
-          {hasErrors ? 'Fix validation errors to export.' : 'Single self-contained file, no scripts.'}
+          {hasErrors ? 'Fix validation errors to export.' : interactive ? 'Single self-contained file with Studio’s inline LiveData runtime (experimental).' : 'Single self-contained file, no scripts.'}
         </span>
       </header>
       <div role="status" aria-live="polite" className={message ? `banner ${message.kind}` : 'sr-only'}>
@@ -97,7 +123,7 @@ export function App() {
       </div>
       <main className="layout">
         <div className="col">
-          <Outline components={project.page.components} selectedId={selectedId} onSelect={setSelectedId} dispatch={dispatch} />
+          <Outline components={project.page.components} selectedId={selectedId} onSelect={setSelectedId} dispatch={dispatch} liveEnabled={LIVE_ENABLED} />
           <WorkbookPanel
             workbook={workbook}
             hasBindings={hasBindings}
@@ -110,7 +136,7 @@ export function App() {
           />
         </div>
         <div className="col wide">
-          <Preview html={html} />
+          <Preview html={html} interactive={interactive} mockScript={mockScript} />
         </div>
         <div className="col">
           {plan && (
@@ -125,8 +151,9 @@ export function App() {
               }}
             />
           )}
-          <TenantExportPanel project={project} hasErrors={hasErrors} />
-          <Inspector component={selected} workbook={workbook} pick={pick} onChange={update} />
+          {LIVE_ENABLED && <LiveDataPanel project={project} dispatch={dispatch} scenario={scenario} onScenario={setScenario} />}
+          <TenantExportPanel project={project} hasErrors={hasErrors} liveEnabled={LIVE_ENABLED} />
+          <Inspector component={selected} workbook={workbook} pick={pick} liveSources={project.page.liveSources} onChange={update} />
           <ValidationPanel issues={issues} />
           <CapabilitiesPanel />
         </div>

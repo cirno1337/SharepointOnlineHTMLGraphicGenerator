@@ -2,14 +2,190 @@ import { useState } from 'react';
 import { normalizeAddress } from '../core/excel/address';
 import { makeBinding } from '../core/excel/resolve';
 import type { WorkbookData } from '../core/excel/types';
-import { isSafeHref, linkKind, type Binding, type Component, type Selection } from '../core/project';
+import { defaultLabelAdjacent, validateSelector, type LabelAdjacentSelector } from '../core/livedata/selector';
+import type { LiveSource } from '../core/livedata/source';
+import { isSafeHref, LEGACY_CELL_NOTICE, linkKind, type Binding, type Component, type Selection } from '../core/project';
 import type { Pick } from './WorkbookPanel';
 
 interface Props {
   component: Component | null;
   workbook: WorkbookData | null;
   pick: Pick | null;
+  liveSources: LiveSource[];
   onChange: (c: Component) => void;
+}
+
+type LiveKpi = Extract<Component, { type: 'liveKpi' }>;
+
+function numOrUndefined(v: string): number | undefined {
+  if (v.trim() === '') return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/** Whole-number field that keeps what the user types (so "-" can be typed) and commits only valid integers. */
+function IntField({ label, caption, value, onCommit }: { label: string; caption: string; value: number; onCommit: (n: number) => void }) {
+  const [text, setText] = useState(String(value));
+  return (
+    <label className="field">
+      {caption}
+      <input
+        aria-label={label}
+        inputMode="numeric"
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          if (/^-?\d+$/.test(e.target.value.trim())) onCommit(Number(e.target.value.trim()));
+        }}
+        onBlur={() => setText(String(value))}
+      />
+    </label>
+  );
+}
+
+/** Inspector for the EXPERIMENTAL Live Excel KPI. Excel selection (sheet + cell) is separate from the data source. */
+function LiveKpiEditor({ c, liveSources, onChange }: { c: LiveKpi; liveSources: LiveSource[]; onChange: (c: Component) => void }) {
+  const sel = c.selector;
+  const problems = sel.type === 'label-adjacent' ? validateSelector(sel) : [];
+  const setSel = (patch: Partial<LabelAdjacentSelector>) => {
+    if (sel.type === 'label-adjacent') onChange({ ...c, selector: { ...sel, ...patch } });
+  };
+  return (
+    <>
+      <p role="note" className="error">
+        Experimental. Uses an undocumented SharePoint behavior; see the Live Excel panel.
+      </p>
+      <label className="field">
+        Label
+        <input value={c.label} onChange={(e) => onChange({ ...c, label: e.target.value })} />
+      </label>
+      <label className="field">
+        Source
+        <select aria-label="Source" value={c.sourceId} onChange={(e) => onChange({ ...c, sourceId: e.target.value })}>
+          <option value="">(choose a source)</option>
+          {liveSources.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.displayName}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        Worksheet
+        <input value={c.worksheet} onChange={(e) => onChange({ ...c, worksheet: e.target.value })} />
+      </label>
+      <label className="field">
+        Selection method
+        <select
+          aria-label="Selection method"
+          value={sel.type}
+          onChange={(e) => {
+            if (e.target.value === 'label-adjacent' && sel.type !== 'label-adjacent') onChange({ ...c, selector: defaultLabelAdjacent('') });
+          }}
+        >
+          {sel.type === 'deprecated-cell' && (
+            <option value="deprecated-cell" disabled>
+              Cell address (removed)
+            </option>
+          )}
+          <option value="label-adjacent">Row label + adjacent value</option>
+        </select>
+      </label>
+      {sel.type === 'deprecated-cell' ? (
+        <p role="alert" className="error" data-testid="legacy-selector">
+          {LEGACY_CELL_NOTICE} (Old address: {sel.address}.) It is not converted automatically.
+        </p>
+      ) : (
+        <>
+          <p className="muted">
+            Example: a worksheet row <strong>Open issues | 23</strong> with label “Open issues”, label column 1 and value offset 1 shows 23. LiveData may omit leading blank worksheet rows. Selection therefore uses visible row content instead of Excel cell coordinates.
+          </p>
+          <label className="field">
+            Row label
+            <input aria-label="Row label" value={sel.label} aria-invalid={problems.some((p) => p.code === 'label-empty' || p.code === 'label-too-long')} onChange={(e) => setSel({ label: e.target.value })} />
+          </label>
+          <IntField label="Label column" caption="Label column (1 = first column of the delivered data; SharePoint may omit empty leading columns, which was not observed)" value={sel.matchColumn + 1} onCommit={(n) => setSel({ matchColumn: n - 1 })} />
+          <IntField label="Value offset" caption="Value offset (columns from the label; 1 = next column, negative = left)" value={sel.valueOffset} onCommit={(n) => setSel({ valueOffset: n })} />
+          <label className="field">
+            <span>
+              <input type="checkbox" checked={sel.caseSensitive} onChange={(e) => setSel({ caseSensitive: e.target.checked })} /> Case-sensitive match
+            </span>
+          </label>
+          <label className="field">
+            <span>
+              <input type="checkbox" checked={sel.trim} onChange={(e) => setSel({ trim: e.target.checked })} /> Trim matching whitespace
+            </span>
+          </label>
+          <label className="field">
+            <span>
+              <input type="checkbox" checked={sel.allowEmptyValue} onChange={(e) => setSel({ allowEmptyValue: e.target.checked })} /> Allow an empty adjacent value
+            </span>
+          </label>
+          {problems.length > 0 && (
+            <ul role="alert" className="error">
+              {problems.map((p) => (
+                <li key={p.code}>{p.message}</li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+      <label className="field">
+        Prefix
+        <input value={c.prefix} onChange={(e) => onChange({ ...c, prefix: e.target.value })} />
+      </label>
+      <label className="field">
+        Suffix
+        <input value={c.suffix} onChange={(e) => onChange({ ...c, suffix: e.target.value })} />
+      </label>
+      <label className="field">
+        Number format
+        <select aria-label="Number format" value={c.numberFormat} onChange={(e) => onChange({ ...c, numberFormat: e.target.value as LiveKpi['numberFormat'] })}>
+          <option value="auto">As in workbook</option>
+          <option value="integer">Integer</option>
+          <option value="decimal1">1 decimal</option>
+          <option value="decimal2">2 decimals</option>
+        </select>
+      </label>
+      <label className="field">
+        Empty-state text
+        <input value={c.emptyText} onChange={(e) => onChange({ ...c, emptyText: e.target.value })} />
+      </label>
+      <label className="field">
+        Error-state text (optional)
+        <input value={c.errorText} onChange={(e) => onChange({ ...c, errorText: e.target.value })} />
+      </label>
+      <label className="field">
+        <span>
+          <input type="checkbox" checked={c.showLoadedAt} onChange={(e) => onChange({ ...c, showLoadedAt: e.target.checked })} /> Show “Loaded from SharePoint at …”
+        </span>
+      </label>
+      <label className="field">
+        <span>
+          <input type="checkbox" checked={c.showRefresh} onChange={(e) => onChange({ ...c, showRefresh: e.target.checked })} /> Show Refresh button
+        </span>
+      </label>
+      <label className="field">
+        Warning at or above (optional)
+        <input value={c.warnAt ?? ''} onChange={(e) => onChange({ ...c, warnAt: numOrUndefined(e.target.value) })} />
+      </label>
+      <label className="field">
+        Critical at or above (optional)
+        <input value={c.criticalAt ?? ''} onChange={(e) => onChange({ ...c, criticalAt: numOrUndefined(e.target.value) })} />
+      </label>
+      <fieldset>
+        <legend>Snapshot fallback (optional)</legend>
+        <p className="muted">Shown only when live data is unavailable, always labelled “Snapshot fallback”. Never shown as live.</p>
+        <label className="field">
+          Fallback value
+          <input
+            value={c.fallback?.value ?? ''}
+            onChange={(e) => onChange({ ...c, fallback: e.target.value === '' ? undefined : { value: e.target.value, importedAt: c.fallback?.importedAt ?? new Date().toISOString() } })}
+          />
+        </label>
+      </fieldset>
+    </>
+  );
 }
 
 function describeBinding(b: Binding): string {
@@ -128,7 +304,7 @@ function BindingEditor({ component, workbook, pick, onChange }: { component: Ext
   );
 }
 
-export function Inspector({ component, workbook, pick, onChange }: Props) {
+export function Inspector({ component, workbook, pick, liveSources, onChange }: Props) {
   if (!component) {
     return (
       <section aria-labelledby="insp-h" className="panel">
@@ -198,6 +374,7 @@ export function Inspector({ component, workbook, pick, onChange }: Props) {
           </p>
         </>
       )}
+      {c.type === 'liveKpi' && <LiveKpiEditor key={c.id} c={c} liveSources={liveSources} onChange={onChange} />}
       {c.type === 'stamp' && (
         <p className="muted">Renders the export timestamp and Studio build identifier. Values are filled in at export time; the preview shows a placeholder.</p>
       )}

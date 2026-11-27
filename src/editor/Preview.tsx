@@ -1,13 +1,25 @@
+import { injectMockScript } from '../core/livedata/mock';
+
 interface Props {
   html: string;
+  /** Interactive Safe pages need scripts; they get `allow-scripts` only (never same-origin) plus mock host data. */
+  interactive?: boolean;
+  /** `<script>` defining window.__LD_RESULTS__ for the MOCK LiveData preview. Never part of an export. */
+  mockScript?: string | null;
 }
 
-/** Renders the real export output in a fully sandboxed iframe (no scripts, no same-origin). */
-export function Preview({ html }: Props) {
+/** Renders the real export output in a sandboxed iframe (no same-origin; scripts only for Interactive Safe). */
+export function Preview({ html, interactive = false, mockScript = null }: Props) {
+  const doc = interactive && mockScript ? injectMockScript(html, mockScript) : html;
   return (
     <section aria-labelledby="preview-h" className="panel preview">
       <h2 id="preview-h">Preview</h2>
-      <iframe title="Exported page preview" sandbox="" srcDoc={html} />
+      {interactive && (
+        <p className="banner ok" data-testid="mock-banner">
+          <strong>Mock LiveData preview based on an observed SharePoint payload.</strong> Not connected to SharePoint: the values below come from sanitized fixture data or a workbook you imported locally, shaped like the trimmed data seen in one tenant (LD-09). No network requests are made.
+        </p>
+      )}
+      <iframe title="Exported page preview" sandbox={interactive ? 'allow-scripts' : ''} srcDoc={doc} />
     </section>
   );
 }

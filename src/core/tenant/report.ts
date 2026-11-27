@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { MAX_HTML_BYTES } from '../capabilities';
-import { EXPORT_CSP, exportContext, renderPage, type RenderContext } from '../export/render';
+import { INTERACTIVE_CSP, STATIC_CSP, exportContext, renderPage, type RenderContext } from '../export/render';
 import { safeFileName } from '../export/fileName';
+import { LIVEDATA_CONTRACT_REVISION, LIVEDATA_PROVIDER_EVIDENCE, PERMISSION_BLOCKER_NOTICE } from '../livedata/constants';
+import { compileManifest } from '../livedata/manifest';
 import type { Project } from '../project';
 import { scanExport, validateHtml, validateProject, type Issue } from '../validate';
 import { sha256Hex, utf8ByteLength } from './hash';
@@ -33,6 +35,38 @@ export const ValidationReportSchema = z.object({
     issues: z.array(z.object({ severity: z.enum(['error', 'warning']), code: z.string(), message: z.string() })),
   }),
   project: z.object({ componentCount: z.number().int().nonnegative(), boundComponentCount: z.number().int().nonnegative() }),
+  exportProfile: z.enum(['static-safe', 'interactive-safe']),
+  /** Experimental LiveData facts. Never contains an identifier, URL or sharing link. */
+  liveData: z.object({
+    experimentalFeatureUsed: z.boolean(),
+    contractRevision: z.string().nullable(),
+    evidenceLevel: z.string().nullable(),
+    manifestSourceCount: z.number().int().nonnegative(),
+    cspStatus: z.string(),
+    refreshSupported: z.boolean(),
+    permissionWarning: z.string().nullable(),
+    /** True when the exported file contains the workbook item URL (tenant host and drive/item identifiers). */
+    identifiersInExport: z.boolean(),
+    cslViewLinkInExport: z.boolean(),
+    explicitSharingDecisionRequired: z.boolean(),
+    fallbackAvailable: z.boolean(),
+    capability: z.literal('experimental').nullable(),
+    permissionTestOutstanding: z.boolean(),
+    selectorEvidence: z.string().nullable(),
+    /** One entry per Live KPI. Never the label text (it may be business-sensitive): only its length. */
+    selectors: z.array(
+      z.object({
+        selectorType: z.string(),
+        worksheet: z.string(),
+        labelLength: z.number().int().nonnegative().nullable(),
+        matchColumn: z.number().int().nullable(),
+        valueOffset: z.number().int().nullable(),
+        caseSensitive: z.boolean().nullable(),
+        trim: z.boolean().nullable(),
+        snapshotFallbackPresent: z.boolean(),
+      }),
+    ),
+  }),
   notes: z.array(z.string()),
 });
 export type ValidationReport = z.infer<typeof ValidationReportSchema>;
@@ -56,10 +90,15 @@ export interface TenantExport {
  * The HTML is exactly what renderPage produces: no scripts, no network references, and no
  * tenant URL, credential or identifier is added. The report is a separate file.
  */
-export async function createTenantTestExport(project: Project, ctx: RenderContext = exportContext()): Promise<TenantExport> {
+export async function createTenantTestExport(project: Project, ctx: RenderContext = exportContext(), opts: { liveEnabled?: boolean } = {}): Promise<TenantExport> {
   const html = renderPage(project, ctx);
   const htmlFileName = safeFileName(project.page.title, 'html');
-  const issues: Issue[] = [...validateProject(project), ...validateHtml(html)];
+  const profile = project.page.exportProfile;
+  const issues: Issue[] = [...validateProject(project, { liveEnabled: opts.liveEnabled }), ...validateHtml(html, { profile })];
+  const liveKpis = project.page.components.filter((c) => c.type === 'liveKpi');
+  const usedIds = new Set(liveKpis.map((c) => (c.type === 'liveKpi' ? c.sourceId : '')));
+  const manifest = profile === 'interactive-safe' ? compileManifest(project.page.liveSources, usedIds) : null;
+  const liveUsed = profile === 'interactive-safe' && liveKpis.length > 0;
   const scan = scanExport(html);
   const bytes = utf8ByteLength(html);
   const report: ValidationReport = {
@@ -67,7 +106,7 @@ export async function createTenantTestExport(project: Project, ctx: RenderContex
     kind: 'studio-export-validation-report',
     generatedAt: ctx.exportedAt,
     studio: { build: ctx.studioBuild },
-    html: { fileName: htmlFileName, utf8Bytes: bytes, limitBytes: MAX_HTML_BYTES, percentOfLimit: percentOfLimit(bytes), sha256: await sha256Hex(html), csp: EXPORT_CSP },
+    html: { fileName: htmlFileName, utf8Bytes: bytes, limitBytes: MAX_HTML_BYTES, percentOfLimit: percentOfLimit(bytes), sha256: await sha256Hex(html), csp: profile === 'interactive-safe' ? INTERACTIVE_CSP : STATIC_CSP },
     checks: {
       scriptCount: scan.scriptCount,
       resourceReferenceCount: scan.resourceReferenceCount,
@@ -84,6 +123,39 @@ export async function createTenantTestExport(project: Project, ctx: RenderContex
     project: {
       componentCount: project.page.components.length,
       boundComponentCount: project.page.components.filter((c) => (c.type === 'kpi' || c.type === 'table') && c.binding).length,
+    },
+    exportProfile: profile,
+    liveData: {
+      experimentalFeatureUsed: liveUsed,
+      contractRevision: liveUsed ? LIVEDATA_CONTRACT_REVISION : null,
+      evidenceLevel: liveUsed ? LIVEDATA_PROVIDER_EVIDENCE : null,
+      manifestSourceCount: manifest?.entries.length ?? 0,
+      cspStatus: profile === 'interactive-safe' ? 'interactive-safe: script-src unsafe-inline (evidence: one tenant, LD-04); default-src none' : 'static-safe: no script',
+      refreshSupported: liveUsed && liveKpis.some((c) => c.type === 'liveKpi' && c.showRefresh),
+      permissionWarning: liveUsed ? PERMISSION_BLOCKER_NOTICE : null,
+      identifiersInExport: (manifest?.entries.length ?? 0) > 0,
+      cslViewLinkInExport: false,
+      explicitSharingDecisionRequired: liveUsed,
+      fallbackAvailable: liveKpis.some((c) => c.type === 'liveKpi' && !!c.fallback),
+      capability: liveUsed ? 'experimental' : null,
+      permissionTestOutstanding: liveUsed,
+      selectorEvidence: liveUsed ? 'label-adjacent: design derived from one tenant observation (LD-09, TENANT_OBSERVED_ONCE); not documented by Microsoft' : null,
+      selectors: liveKpis.flatMap((c) =>
+        c.type !== 'liveKpi'
+          ? []
+          : [
+              {
+                selectorType: c.selector.type,
+                worksheet: c.worksheet,
+                labelLength: c.selector.type === 'label-adjacent' ? c.selector.label.length : null,
+                matchColumn: c.selector.type === 'label-adjacent' ? c.selector.matchColumn : null,
+                valueOffset: c.selector.type === 'label-adjacent' ? c.selector.valueOffset : null,
+                caseSensitive: c.selector.type === 'label-adjacent' ? c.selector.caseSensitive : null,
+                trim: c.selector.type === 'label-adjacent' ? c.selector.trim : null,
+                snapshotFallbackPresent: !!c.fallback,
+              },
+            ],
+      ),
     },
     notes: [
       'Local test metadata. Not part of the exported page. Do not publish it to SharePoint.',

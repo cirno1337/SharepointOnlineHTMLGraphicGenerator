@@ -19,6 +19,9 @@ The exported value is a **snapshot**; it does not update by itself. Live Excel i
 ## Real-tenant validation
 Studio's export has **not** been verified in a SharePoint tenant. Use **Load “SharePoint Compatibility Baseline” template → Tenant Test Export** and follow [docs/testing/real-tenant-baseline.md](docs/testing/real-tenant-baseline.md). The CSP is reviewed in [docs/security/csp.md](docs/security/csp.md).
 
+## Experimental: SharePoint Live Excel (off by default)
+Build with `VITE_EXPERIMENTAL_EXCEL_LIVE=true` to enable an experimental mode that uses an undocumented SharePoint HTML Pages behavior observed in one tenant. It may change without notice; use Excel Snapshot for predictable output. Read [docs/research/live-excel-contract-observed.md](docs/research/live-excel-contract-observed.md) and [docs/security/livedata-threat-model.md](docs/security/livedata-threat-model.md) first. Permission isolation has not been validated (LD-07), so it is not approved for pilot.
+
 ## Scripts
 `npm run typecheck` · `npm run lint` · `npm test` · `npm run build` · `npm run test:e2e` (set `PW_CHROMIUM_PATH` to use an existing Chromium) · `npm run fixtures` · `npm run schemas` · `npm run validate-result -- <file>`
 

@@ -6,9 +6,10 @@ import { downloadText } from './download';
 interface Props {
   project: Project;
   hasErrors: boolean;
+  liveEnabled?: boolean;
 }
 
-export function TenantExportPanel({ project, hasErrors }: Props) {
+export function TenantExportPanel({ project, hasErrors, liveEnabled = false }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TenantExport | null>(null);
@@ -17,7 +18,7 @@ export function TenantExportPanel({ project, hasErrors }: Props) {
     setBusy(true);
     setError(null);
     try {
-      setResult(await createTenantTestExport(project));
+      setResult(await createTenantTestExport(project, undefined, { liveEnabled }));
     } catch (e) {
       setResult(null);
       setError(e instanceof Error ? e.message : 'Tenant test export failed.');
@@ -33,7 +34,7 @@ export function TenantExportPanel({ project, hasErrors }: Props) {
     <section aria-labelledby="tenant-h" className="panel" data-testid="tenant-panel">
       <h2 id="tenant-h">Tenant test export</h2>
       <p className="muted">
-        Generates the normal static export plus a separate validation report with exact size and SHA-256. Nothing is added to the page: no scripts, no network calls, no tenant URLs or credentials.
+        Generates the normal export for the selected profile plus a separate validation report with exact size and SHA-256. Static Safe contains no script. Interactive Safe (experimental) contains only Studio's inline runtime and a manifest holding the workbook item URL (tenant host and identifiers). No network calls, credentials or sharing links are added.
         Follow docs/testing/real-tenant-baseline.md. Passing here does not prove SharePoint compatibility.
       </p>
       <button type="button" onClick={() => void run()} disabled={busy || hasErrors} aria-describedby="tenant-hint">
@@ -89,6 +90,24 @@ export function TenantExportPanel({ project, hasErrors }: Props) {
                 {r.checks.sameSiteLinkCount} / {r.checks.externalLinkCount}
               </dd>
             </div>
+            <div>
+              <dt>Export profile</dt>
+              <dd data-testid="tenant-profile">{r.exportProfile === 'interactive-safe' ? 'Interactive Safe (experimental LiveData)' : 'Static Safe (no script)'}</dd>
+            </div>
+            {r.liveData.experimentalFeatureUsed && (
+              <>
+                <div>
+                  <dt>LiveData contract</dt>
+                  <dd data-testid="tenant-live-contract">
+                    {r.liveData.contractRevision} (undocumented; {r.liveData.manifestSourceCount} source(s))
+                  </dd>
+                </div>
+                <div>
+                  <dt>Identifiers in the file</dt>
+                  <dd data-testid="tenant-live-identifiers">The file contains the workbook item URL (tenant host and identifiers). Do not share it outside the tenant. No sharing link is included, and viewers need access to the workbook.</dd>
+                </div>
+              </>
+            )}
             <div>
               <dt>Studio build</dt>
               <dd className="mono">{r.studio.build}</dd>

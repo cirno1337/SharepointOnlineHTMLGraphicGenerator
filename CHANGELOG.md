@@ -24,3 +24,28 @@
 - Export validator for documented SharePoint constraints (10 MB, no external scripts/resources, no fetch/XHR/WebSocket/Graph/REST/localStorage, no editor runtime).
 - Vitest unit tests and Playwright e2e tests; synthetic fixture `fixtures/project-status.xlsx`.
 - Research notes with Microsoft sources.
+
+## 0.3.0 — Unreleased (experimental SharePoint Live Excel)
+### Added (feature-flagged: `VITE_EXPERIMENTAL_EXCEL_LIVE=true`; off by default)
+- Experimental SharePoint Live Excel based on an undocumented behavior observed in one tenant (contract revision `observed-2026-11-r1`): manifest compiler, inline runtime, xlsx-sheets and CSV parsers, A1 cell selection, Live Excel KPI, snapshot fallback, Mock LiveData preview, LD-09 probe page.
+- Export profiles: Static Safe (default, byte-identical to the previous export) and Interactive Safe (adds `script-src 'unsafe-inline'`).
+- Validation report: `exportProfile` and `liveData` section; schemas regenerated.
+- Docs: observed contract, experiment ledger, threat model, controlled tenant test protocol, audit, Copilot issue write-up.
+### Changed
+- Export validator is profile-aware (strict manifest, runtime equality, CSP-matches-profile, extra forbidden APIs).
+### Not done
+- LD-06, LD-07 (security gate), LD-10; no list/range/table/chart live components; no tenant validation of Studio's runtime.
+
+### 0.3.0 addendum: LD-09 (2026-11-27)
+- Fixed (by disabling): A1 addressing of live data. The host CSV drops leading blank rows, so a CSV row is not an Excel row. Live KPIs now fail validation with `live-addressing-disabled`; the runtime reports `addressing-unsupported` and never a value; the mock preview emits the observed shape. Snapshot Excel A1 binding is unchanged.
+
+### 0.3.0 addendum: label-adjacent selector (2026-11-27)
+- Added: experimental `label-adjacent` Live KPI selector (row label + adjacent value) over the observed trimmed grid; runtime error codes `label-not-found`, `ambiguous-label`, `adjacent-value-missing`, `adjacent-value-empty` and configuration codes; editor fields (worksheet, row label, label column, value offset, case-sensitive, trim, allow empty); mock scenarios for duplicate label, missing label and missing value; report section `liveData.selectors` (label length only).
+- Changed: Live KPIs no longer have a `cell`; old projects load as `deprecated-cell` (warning, export blocked, never converted). Interactive Safe export is available again for valid selectors.
+- Removed: the positional runtime functions (`readCell`, `parseCell`) and `parseLiveCellAddress`.
+
+### 0.3.0 addendum: LD-10 (2026-11-27)
+- Docs only: Studio's label-adjacent export validated in one tenant (view mode, stored-file comparison, Edit mode). No code change.
+
+### 0.3.0 addendum: LD-07 (2026-11-27)
+- Docs only: permission isolation validated in one tenant with a non-admin TEST_VIEWER (page yes/workbook no gave `access-denied` and labelled fallbacks; adding workbook Read gave live 23 and 46). Restoration recorded as partially restored (SharePoint-managed residue, no content access).

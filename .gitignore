@@ -6,3 +6,4 @@ test-results
 .env*
 tenant-test-output/
 *.studio.json
+dist-live

@@ -36,3 +36,21 @@ Last audit: milestone M2 (real-tenant validation preparation). Gates: `npm run t
 
 ## Review items
 See DECISIONS.md D-008 (links without `target`), D-012 (CSP; unused `img-src data:`; keep meta at all?), D-009 (build id requires a clean checkout).
+
+## Baseline for the LiveData milestone (recorded 2026-11-26, before any code change)
+Branch `claude/quirky-mayer-makdmo` (local, created from `main` at be7326c; the remote branch of that name is an ancestor of `main`). Working tree: only an unrelated `package-lock.json` version sync (0.1.0 -> 0.2.0) produced by `npm install`.
+Gates on Windows, Node 26.13.1, npm 11.20.0:
+- `npm run typecheck`: pass
+- `npm run lint`: pass
+- `npm test`: pass, 65 tests in 3 files
+- `npm run build`: pass (one chunk-size warning, pre-existing)
+- `npm run test:e2e`: pass, 7 tests, using `PW_CHROMIUM_PATH` set to the installed Microsoft Edge (`/opt/pw-browsers/chromium` does not exist on this machine)
+
+## LiveData milestone (2026-11-26): experimental SharePoint Live Excel, local implementation
+Readiness: **READY_FOR_CONTROLLED_TENANT_TEST** (maximum allowed). Not production ready. Studio's own runtime has not been run in a tenant. **Permission isolation has not yet been validated with a viewer who can access the page but not the workbook. LiveData is not approved for limited pilot until LD-07 passes.**
+
+Implemented (all behind `VITE_EXPERIMENTAL_EXCEL_LIVE=true`; Snapshot remains the default): manifest compiler (`spItemUrl`, `fileName` only), `SharePointExcelLive` provider, xlsx-sheets envelope parser, RFC 4180 CSV parser, strict single-cell A1 selection, Live Excel KPI with labelled snapshot fallback, Interactive Safe export profile, Mock LiveData preview, edit-mode/no-prefetch state, fixed refresh message with cooldown, validation and report fields, LD-09 probe page, sanitized diagnostics.
+Final gates (label-adjacent): typecheck, lint, build and `npm test` (206 unit tests) pass; Playwright 17 tests pass (7 existing + 10 LiveData).
+LD-10 (2026-11-27): Studio label-adjacent export ran in the tenant (23, 46, labelled isolated fallbacks, SharePoint preserved manifest, runtime, CSP and selector attributes; `TENANT_OBSERVED_ONCE`). Next experiments: LD-07 (required gate, needs approved test users) and LD-05 follow-up / LD-11 (need approval to change the workbook).
+LD-07 (2026-11-27): PASS (`TENANT_OBSERVED_ONCE`): TEST_VIEWER with page access but no workbook access got an `access-denied` host result and only labelled fallbacks; with Read on the workbook the same page showed 23 and 46 live; restoration PARTIALLY_RESTORED (workbook exact; page inherited plus a SharePoint-managed Limited Access entry and a site user list entry for TEST_VIEWER). Readiness: READY_FOR_LIMITED_PILOT (a controlled, labelled pilot in this tenant only; still experimental, undocumented, not production ready)
+LD-09 (2026-11-27): positional A1 addressing of live data DISPROVEN (the host drops leading blank rows, metadata has no coordinates; D-020). Live Excel now uses the experimental `label-adjacent` semantic selector over the trimmed grid (D-021; a design derived from one TENANT_OBSERVED_ONCE observation, not documented by Microsoft). Interactive Safe export is available for valid selectors; old cell-address KPIs load as deprecated and stay blocked. Snapshot Excel A1 binding is unchanged. Readiness: READY_FOR_CONTROLLED_TENANT_TEST. Next: LD-10 (below). Known open items:
